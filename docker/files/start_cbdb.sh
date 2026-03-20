@@ -1,0 +1,325 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+gp_init_config_file="${CLOUDBERRY_DATA_DIRECTORY}/gpinitsystem_config"
+gp_init_host_file="${CLOUDBERRY_DATA_DIRECTORY}/hostfile_gpinitsystem"
+gp_custom_init_dir="/docker-entrypoint-initdb.d"
+gp_master_dir_name="master"
+gp_hostname=$(hostname)
+
+# Cloudberry is always "7+" (PG14)
+gp_log_dir="log"
+gp_master_data_dir_prefix="COORDINATOR"
+
+error_and_exit() {
+    echo "ERROR - $1"
+    exit 1
+}
+
+# usage: file_env VAR [DEFAULT]
+#    ie: file_env 'XYZ_DB_PASSWORD' 'example'
+# (will allow for "$XYZ_DB_PASSWORD_FILE" to fill in the value of
+#  "$XYZ_DB_PASSWORD" from a file, especially for Docker's secrets feature)
+file_env() {
+    local var="$1"
+    local fileVar="${var}_FILE"
+    local def="${2:-}"
+    if [ "${!var:-}" ] && [ "${!fileVar:-}" ]; then
+        error_and_exit "Both $var and $fileVar are set (but are exclusive)"
+    fi
+    local val="$def"
+    if [ "${!var:-}" ]; then
+        val="${!var}"
+    elif [ "${!fileVar:-}" ]; then
+        val="$(< "${!fileVar}")"
+    fi
+    export "$var"="$val"
+    unset "$fileVar"
+}
+
+setup_version_config() {
+    source "/home/${CLOUDBERRY_USER}/.bashrc"
+}
+
+create_directory() {
+    local dir=$1
+    if [ ! -d "${dir}" ]; then
+        echo "INFO - Creating directory: ${dir}"
+        mkdir -p "${dir}"
+    fi
+}
+
+setup_master() {
+    echo "export ${gp_master_data_dir_prefix}_DATA_DIRECTORY=${CLOUDBERRY_DATA_DIRECTORY}/${gp_master_dir_name}/${CLOUDBERRY_SEG_PREFIX}-1" >> ~/.bashrc
+    source "/home/${CLOUDBERRY_USER}/.bashrc"
+    create_directory "${CLOUDBERRY_DATA_DIRECTORY}/${gp_master_dir_name}"
+}
+
+setup_segments() {
+    local segment_num=$1
+    local segment_type=$2
+    create_directory "${CLOUDBERRY_DATA_DIRECTORY}/${segment_num}/${segment_type}"
+}
+
+# Resolve issue with mounted authorized_keys in docker
+# gpssh-exkeys uses rsync to copy the authorized_keys
+# and we get error:
+#   rsync: rename "/home/gpadmin/.ssh/.authorized_keys.wiHHYt" -> "authorized_keys": Device or resource busy (16)
+setup_segment_authorized_keys(){
+    if [ -f /tmp/authorized_keys ]; then
+        echo "INFO - Copy authorized_keys to /home/${CLOUDBERRY_USER}/.ssh/authorized_keys"
+        cp /tmp/authorized_keys /home/${CLOUDBERRY_USER}/.ssh/authorized_keys
+        chmod 600 /home/${CLOUDBERRY_USER}/.ssh/authorized_keys
+    fi
+}
+
+verify_prerequisites() {
+    file_env "CLOUDBERRY_PASSWORD"
+
+    check_required_var "CLOUDBERRY_DATA_DIRECTORY" "${CLOUDBERRY_DATA_DIRECTORY}"
+    check_required_var "CLOUDBERRY_PASSWORD" "${CLOUDBERRY_PASSWORD}"
+}
+
+check_required_var() {
+    local var_name=$1
+    local var_value=$2
+    if [ -z "${var_value}" ]; then
+        error_and_exit "${var_name} variable is not set!"
+    fi
+}
+
+setup_gpinitsystem_config(){
+    if [ -f /tmp/gpinitsystem_config ]; then
+        echo "INFO - Copy gpinitsystem_config to ${gp_init_config_file}"
+        cp /tmp/gpinitsystem_config "${gp_init_config_file}"
+    fi
+}
+
+generate_gpinitsystem_config() {
+    if [ ! -f "${gp_init_config_file}" ] ; then
+        cat > "${gp_init_config_file}" <<EOF
+ARRAY_NAME="Cloudberry in docker"
+DATABASE_NAME=${CLOUDBERRY_DATABASE_NAME}
+SEG_PREFIX=${CLOUDBERRY_SEG_PREFIX}
+PORT_BASE=6000
+${gp_master_data_dir_prefix}_HOSTNAME=${gp_hostname}
+${gp_master_data_dir_prefix}_DIRECTORY=${CLOUDBERRY_DATA_DIRECTORY}/${gp_master_dir_name}
+${gp_master_data_dir_prefix}_PORT=5432
+TRUSTED_SHELL=ssh
+CHECK_POINT_SEGMENTS=8
+ENCODING=UNICODE
+MACHINE_LIST_FILE=${gp_init_host_file}
+declare -a DATA_DIRECTORY=(${CLOUDBERRY_DATA_DIRECTORY}/00/primary ${CLOUDBERRY_DATA_DIRECTORY}/01/primary)
+EOF
+    fi
+}
+
+setup_hostfile_gpinitsystem(){
+    if [ -f /tmp/hostfile_gpinitsystem ]; then
+        echo "INFO - Copy hostfile_gpinitsystem to ${gp_init_host_file}"
+        cp /tmp/hostfile_gpinitsystem "${gp_init_host_file}"
+    fi
+}
+
+generate_hostfile_gpinitsystem() {
+    if [ ! -f "${gp_init_host_file}" ] ; then
+        echo "${gp_hostname}" > ${gp_init_host_file}
+    fi
+}
+
+execute_custom_init_scripts() {
+    local script
+    if [ -d "${gp_custom_init_dir}" ] && [ -n "$(ls -A ${gp_custom_init_dir})" ]; then
+        echo "INFO - Executing custom initialization scripts"
+        for script in "${gp_custom_init_dir}"/*; do
+            case "${script}" in
+                *.sh)
+                    if [ -x "${script}" ]; then
+                        echo "INFO - Executing shell script: ${script}"
+                        "${script}"
+                    else
+                        echo "INFO - Sourcing shell script: ${script}"
+                        source "${script}"
+                    fi
+                    ;;
+                *.sql)
+                    echo "INFO - Executing SQL script: ${script}"
+                    psql -v ON_ERROR_STOP=1  --no-psqlrc -U "${CLOUDBERRY_USER}" -d "${CLOUDBERRY_DATABASE_NAME}" -f "${script}"
+                    ;;
+                *)
+                    echo "INFO - Ignoring: ${script}"
+                    ;;
+            esac
+        done
+        echo "INFO - Finished executing custom initialization scripts"
+    fi
+}
+
+initialize_and_start_cbdb_segments() {
+    local end_flag=""
+    local arg segment_num segment_type
+    echo "INFO - Initializing segment host"
+    if [ $# -eq 0 ]; then
+        error_and_exit "No segment specifications provided"
+    fi
+    for arg in "$@"; do
+        if [[ ! "$arg" =~ ^[0-9]+:(primary|mirror)$ ]]; then
+            error_and_exit "Invalid segment specification format: $arg, expected format: NUMBER:TYPE"
+        fi
+        IFS=':' read -r segment_num segment_type <<< "$arg"
+        setup_segments "${segment_num}" "${segment_type}"
+    done
+    trap "echo 'INFO - Shutdown segment host' && end_flag=1" TERM INT
+    # Keep container running
+    while [ "${end_flag}" == '' ]; do
+        sleep 1
+    done
+}
+
+initialize_and_start_cbdb() {
+    local pg_hba="${CLOUDBERRY_DATA_DIRECTORY}/${gp_master_dir_name}/${CLOUDBERRY_SEG_PREFIX}-1/pg_hba.conf"
+    local pxf_env="${PXF_BASE}/conf/pxf-env.sh"
+    local end_flag=""
+    local gpdb_already_exists_flag=false
+
+    # Scan and add host keys
+    for host in $(cat ${gp_init_host_file}); do
+        ssh-keyscan -t rsa $host >> /home/${CLOUDBERRY_USER}/.ssh/known_hosts 2>/dev/null
+    done
+    chmod 644 /home/${CLOUDBERRY_USER}/.ssh/known_hosts
+
+    # Fetch rsa ssh keys from hosts
+    gpssh-exkeys -f "${gp_init_host_file}"
+
+    if [ -f "${pg_hba}" ]; then
+        gpdb_already_exists_flag=true
+	    echo 'INFO - Start Cloudberry'
+	    gpstart -a
+    else
+        # Init Cloudberry
+        echo "INFO - Initialize Cloudberry"
+        gpinitsystem -e ${CLOUDBERRY_PASSWORD} -ac ${gp_init_config_file}
+        if [ "${CLOUDBERRY_DISKQUOTA_ENABLE}" == "true" ]; then
+            echo "INFO - Enable diskquota"
+            # Get available diskquota version
+            echo "INFO - psql template1 -t -c \"SELECT default_version FROM pg_available_extensions WHERE name = 'diskquota'\" | xargs"
+            gp_diskquota_version=$(psql template1 -t -c "SELECT default_version FROM pg_available_extensions WHERE name = 'diskquota'" | xargs)
+            if [ -z "${gp_diskquota_version}" ]; then
+                echo "WARNING - diskquota extension is not available, skipping diskquota configuration"
+            else
+                echo "INFO - createdb diskquota"
+                createdb "diskquota"
+                # Get current shared_preload_libraries value
+                echo "INFO - psql template1 -t -c \"SHOW shared_preload_libraries\" | xargs"
+                gp_shared_preload_libraries=$(psql template1 -t -c "SHOW shared_preload_libraries" | xargs)
+                # Add diskquota to shared_preload_libraries
+                if [ -z "${gp_shared_preload_libraries}" ]; then
+                    echo "INFO - gpconfig -c shared_preload_libraries -v \"diskquota-${gp_diskquota_version}\""
+                    USER=${CLOUDBERRY_USER} gpconfig -c shared_preload_libraries -v "diskquota-${gp_diskquota_version}"
+                else
+                    echo "INFO - gpconfig -c shared_preload_libraries -v \"'$gp_shared_preload_libraries,diskquota-${gp_diskquota_version}'\""
+                    USER=${CLOUDBERRY_USER} gpconfig -c shared_preload_libraries -v "'$gp_shared_preload_libraries,diskquota-${gp_diskquota_version}'"
+                fi
+            fi
+        fi
+        if [ "${CLOUDBERRY_WALG_ENABLE}" == "true" ]; then
+            echo "INFO - Set parameters for WAL archiving"
+            echo "INFO - gpconfig -c archive_mode -v on"
+            USER=${CLOUDBERRY_USER} gpconfig -c archive_mode -v on
+            echo "INFO - gpconfig -c archive_command -v '/bin/true'"
+            # Set archive_command to /bin/true because there is no storage for WAL specified
+            # This is necessary to avoid errors
+            # Use init script to set actual archive_command
+            USER=${CLOUDBERRY_USER} gpconfig -c archive_command -v "'/bin/true'"
+            echo "INFO - gpconfig -c wal_level -v replica"
+            USER=${CLOUDBERRY_USER} gpconfig -c wal_level -v replica --skipvalidation
+        fi
+        # Configure pg_hba
+        echo "INFO - Configure pg_hba.conf"
+        {
+            echo "host all all 0.0.0.0/0 md5"
+            echo "host all all ::0/0 md5"
+        } >> "${pg_hba}"
+        echo "INFO - Restart Cloudberry"
+        gpstop -ar
+        sleep 10
+    fi
+    # If db name is set and diskquota is enabled, create extension and init table size table
+    if [ "${CLOUDBERRY_DISKQUOTA_ENABLE}" == "true" ] && [ -n "${CLOUDBERRY_DATABASE_NAME:-}" ]; then
+        gp_diskquota_check=$(psql template1 -t -c "SELECT 1 FROM pg_available_extensions WHERE name = 'diskquota'" | xargs)
+        if [ "${gp_diskquota_check}" == "1" ]; then
+            echo "INFO - psql ${CLOUDBERRY_DATABASE_NAME} -t -c \"CREATE EXTENSION IF NOT EXISTS diskquota;\" | xargs"
+            psql ${CLOUDBERRY_DATABASE_NAME} -t -c "CREATE EXTENSION IF NOT EXISTS diskquota;" | xargs
+            echo "INFO - psql ${CLOUDBERRY_DATABASE_NAME} -t -c \"SELECT diskquota.init_table_size_table();\" | xargs"
+            psql ${CLOUDBERRY_DATABASE_NAME} -t -c "SELECT diskquota.init_table_size_table();" | xargs
+        else
+            echo "WARNING - diskquota extension is not available, skipping CREATE EXTENSION"
+        fi
+    fi
+    # Enable PXF
+    if [ ${CLOUDBERRY_PXF_ENABLE} == "true" ]; then
+        if [ ! -f "${pxf_env}" ]; then
+            echo "INFO - Enable PXF"
+            pxf cluster prepare
+            pxf cluster register
+            echo "INFO - psql ${CLOUDBERRY_DATABASE_NAME} -t -c \"CREATE EXTENSION IF NOT EXISTS pxf;\" | xargs"
+            psql ${CLOUDBERRY_DATABASE_NAME} -t -c "CREATE EXTENSION IF NOT EXISTS pxf;" | xargs
+            echo "INFO - configure JVM options for PXF"
+            # Minimaze JVM memory for PXF.
+            # For docker default is too big.
+            echo 'PXF_JVM_OPTS="-Xmx512m -Xms256m"' >> ${pxf_env}
+            pxf cluster sync
+        fi
+        echo "INFO - pxf cluster start"
+        pxf cluster start
+        sleep 10
+    fi
+    # Monitor logs
+    trap "kill %1; \
+        if [ ${CLOUDBERRY_PXF_ENABLE} == 'true' ] && [ -f '${pxf_env}' ]; then \
+            echo 'INFO - Stop PXF cluster'; \
+            pxf cluster stop; \
+        fi; \
+        gpstop -a -M fast && end_flag=1" INT TERM
+    tail -f $(ls ${CLOUDBERRY_DATA_DIRECTORY}/${gp_master_dir_name}/${CLOUDBERRY_SEG_PREFIX}-1/${gp_log_dir}/gpdb-* | tail -n1) &
+    # Execute custom init scripts.
+    if [ "${gpdb_already_exists_flag}" == false ]; then
+        echo "INFO - Execute custom init scripts"
+        execute_custom_init_scripts
+    fi
+    #trap
+    while [ "${end_flag}" == '' ]; do
+        sleep 1
+    done
+}
+
+case ${CLOUDBERRY_DEPLOYMENT} in
+    "singlenode")
+        setup_version_config
+        verify_prerequisites
+        setup_master
+        setup_segments "00" "primary"
+        setup_segments "01" "primary"
+        setup_gpinitsystem_config
+        generate_gpinitsystem_config
+        setup_hostfile_gpinitsystem
+        generate_hostfile_gpinitsystem
+        initialize_and_start_cbdb
+        ;;
+    "master")
+        setup_version_config
+        verify_prerequisites
+        setup_master
+        setup_gpinitsystem_config
+        generate_gpinitsystem_config
+        setup_hostfile_gpinitsystem
+        initialize_and_start_cbdb
+        ;;
+    "segment")
+        setup_segment_authorized_keys
+        initialize_and_start_cbdb_segments "$@"
+        ;;
+    *)
+        error_and_exit "Invalid deployment mode: ${CLOUDBERRY_DEPLOYMENT}"
+        ;;
+esac

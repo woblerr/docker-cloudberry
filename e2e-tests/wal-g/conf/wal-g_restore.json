@@ -1,0 +1,29 @@
+{
+    "segments": {
+            "-1": {
+                    "hostname": "master",
+                    "port": 5432,
+                    "data_dir": "/data/master/gpseg-1"
+            },
+            "0": {
+                    "hostname": "segment1",
+                    "port": 6000,
+                    "data_dir": "/data/00/primary/gpseg0"
+            },
+            "1": {
+                    "hostname": "segment1",
+                    "port": 6000,
+                    "data_dir": "/data/01/primary/gpseg1"
+            },
+            "2": {
+                    "hostname": "segment2",
+                    "port": 6001,
+                    "data_dir": "/data/00/primary/gpseg2"
+            },
+            "3": {
+                    "hostname": "segment2",
+                    "port": 6001,
+                    "data_dir": "/data/01/primary/gpseg3"
+            }
+    }
+}

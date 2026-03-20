@@ -1,0 +1,63 @@
+version: '3'
+services:
+  master-restore:
+    image: ${IMAGE_NAME}:${RESTORE_TAG}
+    container_name: master-restore
+    hostname: master
+    ports:
+      - "${EXPOSE_RESTORE_MASTER_PORT}:5432"
+    environment:
+      - CLOUDBERRY_DEPLOYMENT=master
+      - CLOUDBERRY_DISKQUOTA_ENABLE=true
+      - CLOUDBERRY_WALG_ENABLE=true
+      - CLOUDBERRY_PXF_ENABLE=true
+      - CLOUDBERRY_PASSWORD_FILE=/run/secrets/gpdb_password
+    secrets:
+      - gpdb_password
+    volumes:
+      - ../docker-compose/conf/gpinitsystem_config_no_mirrors:/tmp/gpinitsystem_config
+      - ../docker-compose/conf/hostfile_gpinitsystem:/tmp/hostfile_gpinitsystem
+      - ../docker-compose/conf/ssh/id_rsa:/home/gpadmin/.ssh/id_rsa
+      - ../docker-compose/conf/ssh/id_rsa.pub:/home/gpadmin/.ssh/id_rsa.pub
+      - ./wal-g/conf/wal-g.yaml:/tmp/wal-g.yaml
+      - ./wal-g/conf/wal-g_restore.json:/tmp/wal-g_restore.json
+    depends_on:
+      - segment1-restore
+      - segment2-restore
+    networks:
+      - cloudberry-restore
+
+  segment1-restore:
+    image: ${IMAGE_NAME}:${RESTORE_TAG}
+    container_name: segment1-restore
+    hostname: segment1
+    command: /start_cbdb.sh "00:primary" "01:primary"
+    environment:
+      - CLOUDBERRY_DEPLOYMENT=segment
+    volumes:
+      - ../docker-compose/conf/ssh/authorized_keys:/tmp/authorized_keys
+      - ./wal-g/conf/wal-g.yaml:/tmp/wal-g.yaml
+    stop_grace_period: 60s
+    networks:
+      - cloudberry-restore
+
+  segment2-restore:
+    image: ${IMAGE_NAME}:${RESTORE_TAG}
+    container_name: segment2-restore
+    hostname: segment2
+    command: /start_cbdb.sh "00:primary" "01:primary"
+    environment:
+      - CLOUDBERRY_DEPLOYMENT=segment
+    volumes:
+      - ../docker-compose/conf/ssh/authorized_keys:/tmp/authorized_keys
+      - ./wal-g/conf/wal-g.yaml:/tmp/wal-g.yaml
+    stop_grace_period: 60s
+    networks:
+      - cloudberry-restore
+
+networks:
+  cloudberry-restore:
+
+secrets:
+  gpdb_password:
+    file: ../docker-compose/secrets/gpdb_password

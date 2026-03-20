@@ -1,0 +1,72 @@
+# This file is used to create a Cloudberry cluster with configuration in separate containers:
+# 1 coordinator
+# 2 primary segments with mirrors
+# Without persistent volumes. For persistent volumes, uncomment the volumes section.
+
+version: '3'
+services:
+  master:
+    image: ${IMAGE_NAME}:${TAG}
+    container_name: master
+    hostname: master
+    ports:
+      - "${EXPOSE_MASTER_PORT}:5432"
+    environment:
+      - CLOUDBERRY_DEPLOYMENT=master
+      - CLOUDBERRY_DISKQUOTA_ENABLE=true
+      - CLOUDBERRY_PXF_ENABLE=true
+      - CLOUDBERRY_PASSWORD_FILE=/run/secrets/gpdb_password
+    secrets:
+      - gpdb_password
+    volumes:
+      # - cbdb-master-data:/data
+      # - ../docs/custom_init_scripts:/docker-entrypoint-initdb.d
+      - ./conf/gpinitsystem_config_with_mirrors:/tmp/gpinitsystem_config
+      - ./conf/hostfile_gpinitsystem:/tmp/hostfile_gpinitsystem
+      - ./conf/ssh/id_rsa:/home/gpadmin/.ssh/id_rsa
+      - ./conf/ssh/id_rsa.pub:/home/gpadmin/.ssh/id_rsa.pub
+    depends_on:
+      - segment1
+      - segment2
+    networks:
+      - cloudberry
+
+  segment1:
+    image: ${IMAGE_NAME}:${TAG}
+    container_name: segment1
+    hostname: segment1
+    command: /start_cbdb.sh "00:primary" "01:primary"  "00:mirror" "01:mirror"
+    environment:
+      - CLOUDBERRY_DEPLOYMENT=segment
+    volumes:
+      # - cbdb-segment1-data:/data
+      - ./conf/ssh/authorized_keys:/tmp/authorized_keys
+    stop_grace_period: 60s
+    networks:
+      - cloudberry
+
+  segment2:
+    image: ${IMAGE_NAME}:${TAG}
+    container_name: segment2
+    hostname: segment2
+    command: /start_cbdb.sh "00:primary" "01:primary" "00:mirror" "01:mirror"
+    environment:
+      - CLOUDBERRY_DEPLOYMENT=segment
+    volumes:
+      # - cbdb-segment2-data:/data
+      - ./conf/ssh/authorized_keys:/tmp/authorized_keys
+    stop_grace_period: 60s
+    networks:
+      - cloudberry
+
+networks:
+  cloudberry:
+
+#volumes:
+#  cbdb-master-data:
+#  cbdb-segment1-data:
+#  cbdb-segment2-data:
+
+secrets:
+  gpdb_password:
+    file: ./secrets/gpdb_password
