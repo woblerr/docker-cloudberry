@@ -2,6 +2,8 @@
 
 This project provides Docker images for running [Apache Cloudberry](https://cloudberry.apache.org/) in containers. It supports both single-node and multi-node deployments. The images can be used for development, testing, and learning purposes.
 
+For Greenplum Database and its other forks (Greengage, WarehousePG, open-gpdb) Docker images, see the [docker-greenplum](https://github.com/woblerr/docker-greenplum) repository.
+
 The Cloudberry in docker provides the following features:
 - single-node deployment;
 - coordinator and segments deployment;
