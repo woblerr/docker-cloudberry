@@ -8,7 +8,7 @@ ARG CBDB_VERSION="2.1.0-incubating-rc2"
 ARG PXF_DOWNLOAD_URL="https://github.com/apache/cloudberry-pxf"
 ARG PXF_VERSION="2.1.0-incubating-rc2"
 ARG CBDB_BACKUP_DOWNLOAD_URL="https://github.com/apache/cloudberry-backup"
-ARG CBDB_BACKUP_VERSION="2.1.0-incubating-rc2"
+ARG CBDB_BACKUP_VERSION="ff44dc65e1f19bd08e819d6a5770434e1bf418f1"
 ARG WALG_DOWNLOAD_URL="https://github.com/wal-g/wal-g"
 # Wait new WAL-G release
 ARG WALG_VERSION="4b33c88939ce0cc23acc5f89dcf5e427c50923d9"
@@ -161,8 +161,9 @@ ENV PATH="$PATH:/usr/local/go/bin"
 ENV GOPATH=/opt/go
 
 # cloudberry-backup (gpbackup, gprestore, gpbackup_helper, gpbackup_s3_plugin)
-RUN git clone --depth 1 --branch ${CBDB_BACKUP_VERSION} ${CBDB_BACKUP_DOWNLOAD_URL} /tmp/cloudberry-backup \
+RUN git clone ${CBDB_BACKUP_DOWNLOAD_URL} /tmp/cloudberry-backup \
     && cd /tmp/cloudberry-backup \
+    && git checkout ${CBDB_BACKUP_VERSION} \
     && make depend \
     && make build GIT_VERSION=${CBDB_BACKUP_VERSION} \
     && rm -rf /tmp/cloudberry-backup
@@ -185,8 +186,9 @@ RUN git clone ${WALG_DOWNLOAD_URL} /tmp/wal-g \
 # Components: external-table, fdw, cli, servers
 ENV PATH="/usr/local/cloudberry-db/bin:${PATH}"
 
-RUN git clone --depth 1 --branch ${PXF_VERSION} ${PXF_DOWNLOAD_URL} /tmp/cloudberry-pxf \
+RUN git clone ${PXF_DOWNLOAD_URL} /tmp/cloudberry-pxf \
     && cd /tmp/cloudberry-pxf \
+    && git checkout ${PXF_VERSION} \
     && PXF_HOME=/usr/local/pxf \
        make -j2 -C external-table install \
     && PXF_HOME=/usr/local/pxf \
