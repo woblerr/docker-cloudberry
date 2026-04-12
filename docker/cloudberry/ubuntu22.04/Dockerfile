@@ -1,11 +1,11 @@
 ARG REPO_BUILD_TAG
 ARG UBUNTU_VERSION="22.04"
 ARG GOLANG_VERSION="1.24.11"
-ARG CBDB_REPO_URL="https://github.com/apache/cloudberry.git"
+ARG CBDB_DOWNLOAD_URL="https://github.com/apache/cloudberry"
 ARG CBDB_VERSION="2.1.0-incubating-rc2"
-ARG PXF_DOWNLOAD_URL="https://github.com/apache/cloudberry-pxf/archive/refs/tags"
+ARG PXF_DOWNLOAD_URL="https://github.com/apache/cloudberry-pxf"
 ARG PXF_VERSION="2.1.0-incubating-rc2"
-ARG CBDB_BACKUP_DOWNLOAD_URL="https://github.com/apache/cloudberry-backup/archive/refs/tags"
+ARG CBDB_BACKUP_DOWNLOAD_URL="https://github.com/apache/cloudberry-backup"
 ARG CBDB_BACKUP_VERSION="2.1.0-incubating-rc2"
 ARG WALG_DOWNLOAD_URL="https://github.com/wal-g/wal-g"
 # Wait new WAL-G release
@@ -13,7 +13,7 @@ ARG WALG_VERSION="4b33c88939ce0cc23acc5f89dcf5e427c50923d9"
 
 FROM ubuntu:${UBUNTU_VERSION} AS builder
 
-ARG CBDB_REPO_URL
+ARG CBDB_DOWNLOAD_URL
 ARG CBDB_VERSION
 
 RUN apt-get update \
@@ -78,7 +78,7 @@ RUN apt-get update \
     && ldconfig
 
 # cloudberry
-RUN git clone --recurse-submodules --depth 1 --branch ${CBDB_VERSION} ${CBDB_REPO_URL} /tmp/cloudberry \
+RUN git clone --recurse-submodules --depth 1 --branch ${CBDB_VERSION} ${CBDB_DOWNLOAD_URL} /tmp/cloudberry \
     && cd /tmp/cloudberry \
     && ./configure --prefix=/usr/local/cloudberry-db \
         --disable-external-fts \
@@ -123,12 +123,11 @@ ENV PATH="$PATH:/usr/local/go/bin"
 ENV GOPATH=/opt/go
 
 # cloudberry-backup (gpbackup, gprestore, gpbackup_helper, gpbackup_s3_plugin)
-RUN wget ${CBDB_BACKUP_DOWNLOAD_URL}/${CBDB_BACKUP_VERSION}.tar.gz -O /tmp/cloudberry-backup-${CBDB_BACKUP_VERSION}.tar.gz \
-    && mkdir -p /tmp/cloudberry-backup /tmp/cache \
-    && tar -xzf /tmp/cloudberry-backup-${CBDB_BACKUP_VERSION}.tar.gz --strip-components=1 -C /tmp/cloudberry-backup \
+RUN git clone --depth 1 --branch ${CBDB_BACKUP_VERSION} ${CBDB_BACKUP_DOWNLOAD_URL} /tmp/cloudberry-backup \
     && cd /tmp/cloudberry-backup \
     && make depend \
-    && make build GIT_VERSION=${CBDB_BACKUP_VERSION}
+    && make build GIT_VERSION=${CBDB_BACKUP_VERSION} \
+    && rm -rf /tmp/cloudberry-backup
 
 # wal-g
 # Don't use USE_LZO=1, there is no need to build with WAL-E compatibility
@@ -148,9 +147,7 @@ RUN git clone ${WALG_DOWNLOAD_URL} /tmp/wal-g \
 # Components: external-table, fdw, cli, servers
 ENV PATH="/usr/local/cloudberry-db/bin:${PATH}"
 
-RUN wget ${PXF_DOWNLOAD_URL}/${PXF_VERSION}.tar.gz -O /tmp/cloudberry-pxf-${PXF_VERSION}.tar.gz \
-    && mkdir -p /tmp/cloudberry-pxf \
-    && tar -xzf /tmp/cloudberry-pxf-${PXF_VERSION}.tar.gz --strip-components=1 -C /tmp/cloudberry-pxf \
+RUN git clone --depth 1 --branch ${PXF_VERSION} ${PXF_DOWNLOAD_URL} /tmp/cloudberry-pxf \
     && cd /tmp/cloudberry-pxf \
     && PXF_HOME=/usr/local/pxf \
        make -j2 -C external-table install \
@@ -160,9 +157,7 @@ RUN wget ${PXF_DOWNLOAD_URL}/${PXF_VERSION}.tar.gz -O /tmp/cloudberry-pxf-${PXF_
        make -j2 -C cli install \
     && PXF_HOME=/usr/local/pxf \
        make -j2 -C server install-server \
-    && rm -rf \
-        /tmp/cloudberry-pxf \
-        /tmp/cloudberry-pxf-${PXF_VERSION}.tar.gz
+    && rm -rf /tmp/cloudberry-pxf
 
 FROM ubuntu:${UBUNTU_VERSION} AS final
 
