@@ -1,6 +1,6 @@
 ARG REPO_BUILD_TAG
 ARG ROCKY_VERSION="9"
-ARG GOLANG_VERSION="1.24.11"
+ARG GOLANG_VERSION="1.24.13"
 ARG XERCES_C_DOWNLOAD_URL="https://archive.apache.org/dist/xerces/c/3/sources"
 ARG XERCES_C_VERSION="3.3.0"
 ARG CBDB_DOWNLOAD_URL="https://github.com/apache/cloudberry"

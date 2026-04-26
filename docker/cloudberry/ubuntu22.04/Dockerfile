@@ -1,6 +1,6 @@
 ARG REPO_BUILD_TAG
 ARG UBUNTU_VERSION="22.04"
-ARG GOLANG_VERSION="1.24.11"
+ARG GOLANG_VERSION="1.24.13"
 ARG CBDB_DOWNLOAD_URL="https://github.com/apache/cloudberry"
 ARG CBDB_VERSION="2.1.0-incubating-rc2"
 ARG PXF_DOWNLOAD_URL="https://github.com/apache/cloudberry-pxf"
