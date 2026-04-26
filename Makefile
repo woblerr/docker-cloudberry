@@ -1,5 +1,5 @@
-CBDB_VERSION = 2.1.0-incubating-rc2
-TAG_CBDB ?= 2.1.0-incubating-rc2
+CBDB_VERSION = 2.1.0-incubating
+TAG_CBDB ?= 2.1.0-incubating
 UBUNTU_OS_VERSION = ubuntu22.04
 ROCKY_OS_VERSION = rockylinux9
 UID := $(shell id -u)

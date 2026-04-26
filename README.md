@@ -11,6 +11,7 @@ The Cloudberry in docker provides the following features:
 - diskquota (not available in 2.1.0-incubating, will be added in a future release);
 - gpbackup/gprestore;
 - gpbackup-s3-plugin;
+- gpbackman;
 - PXF (Platform Extension Framework);
 - custom initialization scripts;
 - WAL-G (physical backups).
@@ -40,7 +41,7 @@ The repository contains information for the last available versions. For specifi
 
 | Image | CBDB Version | Ubuntu 22.04 | Rocky Linux 9 | Platform |
 |---|---|---|---|---|
-| cloudberry | 2.1.0-incubating-rc2 | `2.1.0-incubating-rc2`, `2.1.0-incubating-rc2-ubuntu22.04` | `2.1.0-incubating-rc2-rockylinux9` | `linux/amd64`, `linux/arm64` |
+| cloudberry | 2.1.0-incubating | `2.1.0-incubating`, `2.1.0-incubating-ubuntu22.04` | `2.1.0-incubating-rockylinux9` | `linux/amd64`, `linux/arm64` |
 
 ## Pull
 
@@ -65,7 +66,7 @@ You will need to mount the necessary directories or files inside the container (
 ### Simple
 
 ```bash
-docker run -p 5432:5432 -e CLOUDBERRY_PASSWORD=gparray -d cloudberry:2.1.0-incubating-rc2
+docker run -p 5432:5432 -e CLOUDBERRY_PASSWORD=gparray -d cloudberry:2.1.0-incubating
 ```
 
 Connect to Cloudberry:
@@ -80,7 +81,7 @@ As an alternative to passing sensitive information via environment variables, `_
 
 For example:
 ```bash
-docker run -p 5432:5432 -e CLOUDBERRY_PASSWORD_FILE=/run/secrets/gpdb_password -d cloudberry:2.1.0-incubating-rc2
+docker run -p 5432:5432 -e CLOUDBERRY_PASSWORD_FILE=/run/secrets/gpdb_password -d cloudberry:2.1.0-incubating
 ```
 
 ### Initialization Scripts
@@ -128,13 +129,13 @@ You can mount your initialization scripts directory to the container:
 docker run -p 5432:5432 \
   -e CLOUDBERRY_PASSWORD=gparray \
   -v $(pwd)/docs/custom_init_scripts:/docker-entrypoint-initdb.d \
-  -d cloudberry:2.1.0-incubating-rc2
+  -d cloudberry:2.1.0-incubating
 ```
 
 Or build a custom image:
 
 ```bash
-FROM cloudberry:2.1.0-incubating-rc2
+FROM cloudberry:2.1.0-incubating
 COPY docs/custom_init_scripts/* /docker-entrypoint-initdb.d/
 ```
 
@@ -149,7 +150,7 @@ docker run -p 5432:5432 \
   -e CLOUDBERRY_WALG_ENABLE=true \
   -v $(pwd)/wal-g.yaml:/tmp/wal-g.yaml \
   -v $(pwd)/wal-g_init.sh:/docker-entrypoint-initdb.d/wal-g_init.sh \
-  -d cloudberry:2.1.0-incubating-rc2
+  -d cloudberry:2.1.0-incubating
 ```
 
 Where init scripts for WAL-G looks like:
@@ -207,34 +208,34 @@ docker compose -f ./docker-compose/docker-compose.with_mirrors.yaml up -d
 
 For Ubuntu based images:
 ```bash
-make build_cbdb_ubuntu TAG_CBDB=2.1.0-incubating-rc2
+make build_cbdb_ubuntu TAG_CBDB=2.1.0-incubating
 ```
 
 For Rocky Linux based images:
 ```bash
-make build_cbdb_rockylinux TAG_CBDB=2.1.0-incubating-rc2
+make build_cbdb_rockylinux TAG_CBDB=2.1.0-incubating
 ```
 
 **Manual build examples:**
 
 Ubuntu simple manual build:
 ```bash
-docker buildx build -f docker/cloudberry/ubuntu22.04/Dockerfile -t cloudberry:2.1.0-incubating-rc2 .
+docker buildx build -f docker/cloudberry/ubuntu22.04/Dockerfile -t cloudberry:2.1.0-incubating .
 ```
 
 Rocky Linux simple manual build:
 ```bash
-docker buildx build -f docker/cloudberry/rockylinux9/Dockerfile -t cloudberry:2.1.0-incubating-rc2-rockylinux9 .
+docker buildx build -f docker/cloudberry/rockylinux9/Dockerfile -t cloudberry:2.1.0-incubating-rockylinux9 .
 ```
 
 Manual build with specific component version for `linux/amd64` platform:
 ```bash
-docker buildx build --platform linux/amd64 -f docker/cloudberry/ubuntu22.04/Dockerfile --build-arg CBDB_VERSION=2.1.0-incubating-rc2 -t cloudberry:2.1.0-incubating-rc2 .
+docker buildx build --platform linux/amd64 -f docker/cloudberry/ubuntu22.04/Dockerfile --build-arg CBDB_VERSION=2.1.0-incubating -t cloudberry:2.1.0-incubating .
 ```
 
 Manual build with specific component versions for `linux/amd64` and `linux/arm64` platforms:
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f docker/cloudberry/ubuntu22.04/Dockerfile --build-arg CBDB_VERSION=2.1.0-incubating-rc2 -t cloudberry:2.1.0-incubating-rc2 .
+docker buildx build --platform linux/amd64,linux/arm64 -f docker/cloudberry/ubuntu22.04/Dockerfile --build-arg CBDB_VERSION=2.1.0-incubating -t cloudberry:2.1.0-incubating .
 ```
 
 ## Running tests
