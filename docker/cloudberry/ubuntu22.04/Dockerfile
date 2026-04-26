@@ -8,7 +8,7 @@ ARG PXF_VERSION="2.1.0-incubating"
 ARG CBDB_BACKUP_DOWNLOAD_URL="https://github.com/apache/cloudberry-backup"
 ARG CBDB_BACKUP_VERSION="6b40b13354e7ee2ff8f75262892d2f3d6004604e"
 ARG WALG_DOWNLOAD_URL="https://github.com/wal-g/wal-g"
-# Wait new WAL-G release
+# Wait new releases for cloudberry to update to latest go version.
 ARG WALG_VERSION="4b33c88939ce0cc23acc5f89dcf5e427c50923d9"
 
 FROM ubuntu:${UBUNTU_VERSION} AS builder
