@@ -11,6 +11,7 @@ The Cloudberry in docker provides the following features:
 - diskquota (not available in 2.1.0-incubating, will be added in a future release);
 - gpbackup/gprestore;
 - gpbackup-s3-plugin;
+- gpbackman;
 - PXF (Platform Extension Framework);
 - custom initialization scripts;
 - WAL-G (physical backups).

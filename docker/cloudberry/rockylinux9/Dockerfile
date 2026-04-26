@@ -8,7 +8,7 @@ ARG CBDB_VERSION="2.1.0-incubating"
 ARG PXF_DOWNLOAD_URL="https://github.com/apache/cloudberry-pxf"
 ARG PXF_VERSION="2.1.0-incubating"
 ARG CBDB_BACKUP_DOWNLOAD_URL="https://github.com/apache/cloudberry-backup"
-ARG CBDB_BACKUP_VERSION="ff44dc65e1f19bd08e819d6a5770434e1bf418f1"
+ARG CBDB_BACKUP_VERSION="6b40b13354e7ee2ff8f75262892d2f3d6004604e"
 ARG WALG_DOWNLOAD_URL="https://github.com/wal-g/wal-g"
 # Wait new WAL-G release
 ARG WALG_VERSION="4b33c88939ce0cc23acc5f89dcf5e427c50923d9"
