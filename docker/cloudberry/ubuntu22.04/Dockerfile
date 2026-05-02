@@ -227,6 +227,7 @@ RUN apt-get update \
         ca-certificates \
         tzdata \
         openjdk-11-jre \
+        fakeroot \
     && apt-get autoremove -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -269,6 +270,9 @@ COPY --from=go_builder \
     /usr/local/cloudberry-db/bin/
 COPY --from=go_builder /usr/local/pxf /usr/local/pxf
 COPY --from=go_builder /tmp/wal-g/main/gp/wal-g /usr/local/cloudberry-db/bin/wal-g
+RUN chown -R ${CLOUDBERRY_USER}:${CLOUDBERRY_GROUP} \
+    /usr/local/cloudberry-db \
+    /usr/local/pxf
 COPY --chmod=755 docker/files/entrypoint.sh /entrypoint.sh
 COPY --chmod=755 docker/files/start_cbdb.sh /start_cbdb.sh
 

@@ -24,6 +24,13 @@ if [ "${uid}" = "0" ]; then
         mkdir -p /home/${CLOUDBERRY_USER}/pxf
         ssh-keygen -q -f /home/${CLOUDBERRY_USER}/.ssh/id_rsa -t rsa -N ""
     fi
+    # If user or group was customized.
+    if [ "${CLOUDBERRY_USER}" != "gpadmin" ] || [ "${CLOUDBERRY_UID}" != "1001" ] \
+        || [ "${CLOUDBERRY_GROUP}" != "gpadmin" ] || [ "${CLOUDBERRY_GID}" != "1001" ]; then
+        chown -R ${CLOUDBERRY_USER}:${CLOUDBERRY_GROUP} \
+          /usr/local/cloudberry-db \
+          /usr/local/pxf
+    fi
     # Correct user:group.
     chown -R ${CLOUDBERRY_USER}:${CLOUDBERRY_GROUP} \
         /home/${CLOUDBERRY_USER} \
