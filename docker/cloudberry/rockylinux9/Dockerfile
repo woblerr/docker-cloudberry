@@ -331,8 +331,9 @@ COPY --from=go_builder \
     /opt/go/bin/gpbackup \
     /opt/go/bin/gprestore \
     /opt/go/bin/gpbackup_helper \
+    /opt/go/bin/gpbackup_s3_plugin \
+    /opt/go/bin/gpbackman \
     /usr/local/cloudberry-db/bin/
-COPY --from=go_builder /opt/go/bin/gpbackup_s3_plugin /usr/local/cloudberry-db/bin/gpbackup_s3_plugin
 COPY --from=go_builder /usr/local/pxf /usr/local/pxf
 COPY --from=go_builder /tmp/wal-g/main/gp/wal-g /usr/local/cloudberry-db/bin/wal-g
 COPY --chmod=755 docker/files/entrypoint.sh /entrypoint.sh
