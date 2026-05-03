@@ -127,6 +127,12 @@ generate_hostfile_gpinitsystem() {
     fi
 }
 
+check_hostfile_gpinitsystem() {
+    if [ ! -f "${gp_init_host_file}" ]; then
+        error_and_exit "Hostfile ${gp_init_host_file} is required but not found. Please mount hostfile_gpinitsystem."
+    fi
+}
+
 execute_custom_init_scripts() {
     local script
     if [ -d "${gp_custom_init_dir}" ] && [ -n "$(ls -A ${gp_custom_init_dir})" ]; then
@@ -339,6 +345,7 @@ case ${CLOUDBERRY_DEPLOYMENT} in
         setup_gpinitsystem_config
         generate_gpinitsystem_config
         setup_hostfile_gpinitsystem
+        check_hostfile_gpinitsystem
         initialize_and_start_cbdb
         ;;
     "segment")
@@ -350,7 +357,7 @@ case ${CLOUDBERRY_DEPLOYMENT} in
         setup_master
         setup_segment_authorized_keys
         setup_hostfile_gpinitsystem
-        generate_hostfile_gpinitsystem
+        check_hostfile_gpinitsystem
         initialize_and_start_cbdb_standby
         ;;
     *)
