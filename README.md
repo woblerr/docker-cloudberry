@@ -8,6 +8,7 @@ The Cloudberry in docker provides the following features:
 - single-node deployment;
 - coordinator and segments deployment;
 - support for segment mirroring;
+- standby coordinator support;
 - diskquota (not available in 2.1.0-incubating, will be added in a future release);
 - gpbackup/gprestore;
 - gpbackup-s3-plugin;
@@ -24,13 +25,15 @@ Environment variables supported by this image:
 * `CLOUDBERRY_UID` - UID of `${CLOUDBERRY_USER}` user, default `1001`;
 * `CLOUDBERRY_GROUP` - group name of `${CLOUDBERRY_USER}` user, default `gpadmin`;
 * `CLOUDBERRY_GID` - GID of `${CLOUDBERRY_USER}` user, default `1001`;
-* `CLOUDBERRY_DEPLOYMENT` - Cloudberry deployment type, default `singlenode`, available values: `singlenode`, `master`, `segment`;
+* `CLOUDBERRY_DEPLOYMENT` - Cloudberry deployment type, default `singlenode`, available values: `singlenode`, `master`, `segment`, `standby`;
 * `CLOUDBERRY_DATA_DIRECTORY` - Cloudberry data directory location, default `/data`;
 * `CLOUDBERRY_SEG_PREFIX` - Cloudberry segment prefix, default `gpseg`;
 * `CLOUDBERRY_DATABASE_NAME` - Cloudberry database name, default `demo`, this database will be created during the initialization;
 * `CLOUDBERRY_DISKQUOTA_ENABLE` - enable diskquota, default `false`. Note: diskquota extension is not available in 2.1.0-incubating, the setting will be silently skipped;
 * `CLOUDBERRY_PXF_ENABLE` - enable PXF, default `false`;
 * `CLOUDBERRY_WALG_ENABLE` - enable WAL-G, default `false`;
+* `CLOUDBERRY_STANDBY_HOSTNAME` - standby coordinator hostname, used when `CLOUDBERRY_DEPLOYMENT=master` to add standby's SSH host key to `known_hosts` and initialize standby coordinator via `gpinitstandby`, optional;
+* `CLOUDBERRY_COORDINATOR_HOSTNAME` - coordinator hostname, used when `CLOUDBERRY_DEPLOYMENT=standby` to add coordinator's SSH host key to `known_hosts`, optional;
 
 Required environment variables:
 * `CLOUDBERRY_PASSWORD` - password for `${CLOUDBERRY_USER}` user, **required**;
@@ -188,6 +191,22 @@ Segments mounts:
        - ./conf/ssh/authorized_keys:/tmp/authorized_keys
 ```
 
+#### Standby Coordinator
+
+Standby coordinator mounts:
+```yaml
+    environment:
+      - CLOUDBERRY_DEPLOYMENT=standby
+      - CLOUDBERRY_COORDINATOR_HOSTNAME=master
+    volumes:
+      - ./conf/ssh/authorized_keys:/tmp/authorized_keys
+      - ./conf/hostfile_gpinitsystem:/tmp/hostfile_gpinitsystem
+      - ./conf/ssh/id_rsa:/home/gpadmin/.ssh/id_rsa
+      - ./conf/ssh/id_rsa.pub:/home/gpadmin/.ssh/id_rsa.pub
+```
+
+`CLOUDBERRY_COORDINATOR_HOSTNAME` is required to add coordinator's SSH host key to `known_hosts` on standby. `hostfile_gpinitsystem` and SSH keys are required for standby to connect to segments after failover via `gpactivatestandby`.
+
 #### Run
 Run cluster with 1 coordinator and 2 segments without mirroring:
 ```bash
@@ -202,6 +221,11 @@ docker compose -f ./docker-compose/docker-compose.no_mirrors_persistent.yaml up 
 Run cluster with 1 coordinator and 2 segments with mirroring:
 ```bash
 docker compose -f ./docker-compose/docker-compose.with_mirrors.yaml up -d
+```
+
+Run cluster with 1 coordinator, standby coordinator and 2 segments with mirroring:
+```bash
+docker compose -f ./docker-compose/docker-compose.with_mirrors_and_standby.yaml up -d
 ```
 
 ## Build
