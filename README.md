@@ -207,6 +207,8 @@ Standby coordinator mounts:
 
 `CLOUDBERRY_COORDINATOR_HOSTNAME` is required to add coordinator's SSH host key to `known_hosts` on standby. `hostfile_gpinitsystem` and SSH keys are required for standby to connect to segments after failover via `gpactivatestandby`.
 
+The standby coordinator initialization is triggered only during the initial cluster setup. If the standby data volume is recreated later while the active coordinator data persists, it will not be initialized automatically. Manual restoration via `gpinitstandby` is required.
+
 #### Run
 Run cluster with 1 coordinator and 2 segments without mirroring:
 ```bash
