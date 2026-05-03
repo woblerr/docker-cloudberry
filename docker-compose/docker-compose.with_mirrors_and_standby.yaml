@@ -50,6 +50,9 @@ services:
       - ./conf/ssh/id_rsa:/home/gpadmin/.ssh/id_rsa
       - ./conf/ssh/id_rsa.pub:/home/gpadmin/.ssh/id_rsa.pub
     stop_grace_period: 60s
+    depends_on:
+      - segment1
+      - segment2
     networks:
       - cloudberry
 
