@@ -33,7 +33,7 @@ Environment variables supported by this image:
 * `CLOUDBERRY_PXF_ENABLE` - enable PXF, default `false`;
 * `CLOUDBERRY_WALG_ENABLE` - enable WAL-G, default `false`;
 * `CLOUDBERRY_STANDBY_HOSTNAME` - standby coordinator hostname, used when `CLOUDBERRY_DEPLOYMENT=master` to add standby's SSH host key to `known_hosts` and initialize standby coordinator via `gpinitstandby`, optional;
-* `CLOUDBERRY_COORDINATOR_HOSTNAME` - coordinator hostname, used when `CLOUDBERRY_DEPLOYMENT=standby` to add coordinator's SSH host key to `known_hosts`, optional;
+* `CLOUDBERRY_COORDINATOR_HOSTNAME` - coordinator hostname, used when `CLOUDBERRY_DEPLOYMENT=standby` to add coordinator's SSH host key to `known_hosts`; required when `CLOUDBERRY_DEPLOYMENT=standby`;
 
 Required environment variables:
 * `CLOUDBERRY_PASSWORD` - password for `${CLOUDBERRY_USER}` user, **required**;
