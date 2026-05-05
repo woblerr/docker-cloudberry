@@ -27,6 +27,10 @@ test-e2e:
 test-e2e-walg:
 	$(MAKE) -C e2e-tests test-e2e-walg
 
+.PHONY: test-e2e-standby-coordinator
+test-e2e-standby-coordinator:
+	$(MAKE) -C e2e-tests test-e2e-standby-coordinator
+
 define build_cbdb_image
 	@echo "Build Cloudberry $(1) $(2) docker image"
 	docker buildx build -f docker/cloudberry/$(2)/Dockerfile --build-arg CBDB_VERSION=$(1) -t cloudberry:$(1) .

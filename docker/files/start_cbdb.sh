@@ -127,6 +127,12 @@ generate_hostfile_gpinitsystem() {
     fi
 }
 
+check_hostfile_gpinitsystem() {
+    if [ ! -f "${gp_init_host_file}" ]; then
+        error_and_exit "Hostfile ${gp_init_host_file} is required but not found. Please mount hostfile_gpinitsystem."
+    fi
+}
+
 execute_custom_init_scripts() {
     local script
     if [ -d "${gp_custom_init_dir}" ] && [ -n "$(ls -A ${gp_custom_init_dir})" ]; then
@@ -176,6 +182,25 @@ initialize_and_start_cbdb_segments() {
     done
 }
 
+initialize_and_start_cbdb_standby() {
+    local end_flag=""
+    echo "INFO - Initializing standby coordinator host"
+    for host in $(cat ${gp_init_host_file}); do
+        ssh-keyscan -t rsa $host >> /home/${CLOUDBERRY_USER}/.ssh/known_hosts 2>/dev/null
+    done
+    if [ -n "${CLOUDBERRY_COORDINATOR_HOSTNAME:-}" ]; then
+        ssh-keyscan -t rsa "${CLOUDBERRY_COORDINATOR_HOSTNAME}" >> /home/${CLOUDBERRY_USER}/.ssh/known_hosts 2>/dev/null
+    else
+        echo "WARNING - CLOUDBERRY_COORDINATOR_HOSTNAME is not set, skipping ssh-keyscan for coordinator"
+    fi
+    chmod 644 /home/${CLOUDBERRY_USER}/.ssh/known_hosts
+    trap "echo 'INFO - Shutdown standby coordinator host' && end_flag=1" TERM INT
+    # Keep container running
+    while [ "${end_flag}" == '' ]; do
+        sleep 1
+    done
+}
+
 initialize_and_start_cbdb() {
     local pg_hba="${CLOUDBERRY_DATA_DIRECTORY}/${gp_master_dir_name}/${CLOUDBERRY_SEG_PREFIX}-1/pg_hba.conf"
     local pxf_env="${PXF_BASE}/conf/pxf-env.sh"
@@ -186,6 +211,9 @@ initialize_and_start_cbdb() {
     for host in $(cat ${gp_init_host_file}); do
         ssh-keyscan -t rsa $host >> /home/${CLOUDBERRY_USER}/.ssh/known_hosts 2>/dev/null
     done
+    if [ -n "${CLOUDBERRY_STANDBY_HOSTNAME:-}" ]; then
+        ssh-keyscan -t rsa "${CLOUDBERRY_STANDBY_HOSTNAME}" >> /home/${CLOUDBERRY_USER}/.ssh/known_hosts 2>/dev/null
+    fi
     chmod 644 /home/${CLOUDBERRY_USER}/.ssh/known_hosts
 
     # Fetch rsa ssh keys from hosts
@@ -243,6 +271,10 @@ initialize_and_start_cbdb() {
         echo "INFO - Restart Cloudberry"
         gpstop -ar
         sleep 10
+        if [ -n "${CLOUDBERRY_STANDBY_HOSTNAME:-}" ]; then
+            echo "INFO - Initialize standby coordinator on ${CLOUDBERRY_STANDBY_HOSTNAME}"
+            gpinitstandby -a -s "${CLOUDBERRY_STANDBY_HOSTNAME}"
+        fi
     fi
     # If db name is set and diskquota is enabled, create extension and init table size table
     if [ "${CLOUDBERRY_DISKQUOTA_ENABLE}" == "true" ] && [ -n "${CLOUDBERRY_DATABASE_NAME:-}" ]; then
@@ -313,11 +345,20 @@ case ${CLOUDBERRY_DEPLOYMENT} in
         setup_gpinitsystem_config
         generate_gpinitsystem_config
         setup_hostfile_gpinitsystem
+        check_hostfile_gpinitsystem
         initialize_and_start_cbdb
         ;;
     "segment")
         setup_segment_authorized_keys
         initialize_and_start_cbdb_segments "$@"
+        ;;
+    "standby")
+        setup_version_config
+        setup_master
+        setup_segment_authorized_keys
+        setup_hostfile_gpinitsystem
+        check_hostfile_gpinitsystem
+        initialize_and_start_cbdb_standby
         ;;
     *)
         error_and_exit "Invalid deployment mode: ${CLOUDBERRY_DEPLOYMENT}"
