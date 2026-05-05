@@ -62,3 +62,45 @@ docker compose -f docker-compose.s3.yml -f docker-compose.cbdb.yml -f docker-com
 CLOUDBERRY_PASSWORD=$(cat ../docker-compose/secrets/gpdb_password) ./scripts/e2e-test.sh
 docker compose -f docker-compose.s3.yml -f docker-compose.cbdb.yml -f docker-compose.cbdb-restore.yml down
 ```
+
+### Standby coordinator tests
+
+The cluster is described in `../docker-compose/docker-compose.with_mirrors_and_standby.yaml`.
+
+The test validates standby coordinator promotion and cluster recovery functionality for Cloudberry:
+
+1. **Graceful failover test**:
+   - Stops the primary master coordinator gracefully
+   - Promotes the standby coordinator to be the new primary
+   - Compares test data on the new primary
+   - Cleans up and initializes the old primary as a new standby coordinator
+   - Verifies the standby replication state
+
+2. **Crash recovery test**:
+   - Simulates a crash by killing the primary coordinator container
+   - Promotes the standby coordinator
+   - Compares test data on the new primary
+   - Revives the crashed container, cleans up data, and re-initializes it as a standby
+   - Verifies the standby replication state
+
+Run:
+
+```bash
+make test-e2e-standby-coordinator
+```
+
+or
+
+```bash
+cd e2e-tests
+make test-e2e-standby-coordinator
+```
+
+or manually:
+
+```bash
+cd [docker-cloudberry-root]/e2e-tests
+docker compose -f ../docker-compose/docker-compose.with_mirrors_and_standby.yaml up -d
+CLOUDBERRY_PASSWORD=$(cat ../docker-compose/secrets/gpdb_password) ./scripts/e2e-standby-coordinator-test.sh
+docker compose -f ../docker-compose/docker-compose.with_mirrors_and_standby.yaml down
+```
