@@ -191,7 +191,7 @@ initialize_and_start_cbdb_standby() {
     if [ -n "${CLOUDBERRY_COORDINATOR_HOSTNAME:-}" ]; then
         ssh-keyscan -t rsa "${CLOUDBERRY_COORDINATOR_HOSTNAME}" >> /home/${CLOUDBERRY_USER}/.ssh/known_hosts 2>/dev/null
     else
-        echo "WARNING - CLOUDBERRY_COORDINATOR_HOSTNAME is not set, skipping ssh-keyscan for coordinator"
+        error_and_exit "CLOUDBERRY_COORDINATOR_HOSTNAME is required when CLOUDBERRY_DEPLOYMENT=standby; cannot add coordinator's SSH host key to known_hosts."
     fi
     chmod 644 /home/${CLOUDBERRY_USER}/.ssh/known_hosts
     trap "echo 'INFO - Shutdown standby coordinator host' && end_flag=1" TERM INT
