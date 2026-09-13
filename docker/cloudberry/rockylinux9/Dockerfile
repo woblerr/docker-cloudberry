@@ -1,6 +1,6 @@
 ARG REPO_BUILD_TAG
 ARG ROCKY_VERSION="9"
-ARG GOLANG_VERSION="1.25.11"
+ARG GOLANG_VERSION="1.25.14"
 ARG XERCES_C_DOWNLOAD_URL="https://archive.apache.org/dist/xerces/c/3/sources"
 ARG XERCES_C_VERSION="3.3.0"
 ARG CBDB_DOWNLOAD_URL="https://github.com/apache/cloudberry"
@@ -11,7 +11,7 @@ ARG CBDB_BACKUP_DOWNLOAD_URL="https://github.com/apache/cloudberry-backup"
 ARG CBDB_BACKUP_VERSION="6b40b13354e7ee2ff8f75262892d2f3d6004604e"
 ARG WALG_DOWNLOAD_URL="https://github.com/wal-g/wal-g"
 # Keep WAL-G pinned to a tested Cloudberry-compatible commit.
-ARG WALG_VERSION="e4843b849ca05a27655794888341de2662035853"
+ARG WALG_VERSION="v3.0.9"
 ARG GOSU_VERSION="1.19"
 
 FROM rockylinux/rockylinux:${ROCKY_VERSION} AS builder

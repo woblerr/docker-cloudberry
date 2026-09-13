@@ -1,6 +1,6 @@
 ARG REPO_BUILD_TAG
 ARG UBUNTU_VERSION="22.04"
-ARG GOLANG_VERSION="1.25.11"
+ARG GOLANG_VERSION="1.25.14"
 ARG CBDB_DOWNLOAD_URL="https://github.com/apache/cloudberry"
 ARG CBDB_VERSION="2.1.0-incubating"
 ARG PXF_DOWNLOAD_URL="https://github.com/apache/cloudberry-pxf"
@@ -9,7 +9,7 @@ ARG CBDB_BACKUP_DOWNLOAD_URL="https://github.com/apache/cloudberry-backup"
 ARG CBDB_BACKUP_VERSION="6b40b13354e7ee2ff8f75262892d2f3d6004604e"
 ARG WALG_DOWNLOAD_URL="https://github.com/wal-g/wal-g"
 # Keep WAL-G pinned to a tested Cloudberry-compatible commit.
-ARG WALG_VERSION="e4843b849ca05a27655794888341de2662035853"
+ARG WALG_VERSION="v3.0.9"
 
 FROM ubuntu:${UBUNTU_VERSION} AS builder
 
