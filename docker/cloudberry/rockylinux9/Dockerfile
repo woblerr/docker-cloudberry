@@ -8,7 +8,7 @@ ARG CBDB_VERSION="2.1.0-incubating"
 ARG PXF_DOWNLOAD_URL="https://github.com/apache/cloudberry-pxf"
 ARG PXF_VERSION="2.1.0-incubating"
 ARG CBDB_BACKUP_DOWNLOAD_URL="https://github.com/apache/cloudberry-backup"
-ARG CBDB_BACKUP_VERSION="6b40b13354e7ee2ff8f75262892d2f3d6004604e"
+ARG CBDB_BACKUP_VERSION="6c326e7889eee4508c1eaa6fe596d7f124faf0ed"
 ARG WALG_DOWNLOAD_URL="https://github.com/wal-g/wal-g"
 # Keep WAL-G pinned to a tested Cloudberry-compatible commit.
 ARG WALG_VERSION="v3.0.9"
@@ -160,7 +160,7 @@ RUN mkdir -p /opt/go \
 ENV PATH="$PATH:/usr/local/go/bin"
 ENV GOPATH=/opt/go
 
-# cloudberry-backup (gpbackup, gprestore, gpbackup_helper, gpbackup_s3_plugin)
+# cloudberry-backup (gpbackup, gprestore, gpbackup_helper, gpbackup_s3_plugin, gpbackman, gpbackup_exporter)
 RUN git clone ${CBDB_BACKUP_DOWNLOAD_URL} /tmp/cloudberry-backup \
     && cd /tmp/cloudberry-backup \
     && git checkout ${CBDB_BACKUP_VERSION} \
@@ -333,6 +333,7 @@ COPY --chown=${CLOUDBERRY_USER}:${CLOUDBERRY_GROUP} --from=go_builder \
     /opt/go/bin/gpbackup_helper \
     /opt/go/bin/gpbackup_s3_plugin \
     /opt/go/bin/gpbackman \
+    /opt/go/bin/gpbackup_exporter \
     /usr/local/cloudberry-db/bin/
 COPY --chown=${CLOUDBERRY_USER}:${CLOUDBERRY_GROUP} --from=go_builder /usr/local/pxf /usr/local/pxf
 COPY --chown=${CLOUDBERRY_USER}:${CLOUDBERRY_GROUP} --from=go_builder /tmp/wal-g/main/gp/wal-g /usr/local/cloudberry-db/bin/wal-g
