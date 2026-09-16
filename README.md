@@ -168,10 +168,11 @@ USER=${CLOUDBERRY_USER} gpstop -u
 
 #### gpbackup exporter
 
-`gpbackup_exporter` collects Prometheus metrics from `gpbackup_history.db`. It is available in the image but is not started automatically. Start it on the coordinator with the path to its history database:
+`gpbackup_exporter` collects Prometheus metrics from `gpbackup_history.db`. It is available in the image but is not started automatically. Start it on the coordinator with the path to its history database. The default `gpadmin` user keeps the exporter from running as root:
 
 ```bash
-docker exec -d master gpbackup_exporter \
+docker exec -d --user gpadmin <coordinator-container> \
+  /usr/local/cloudberry-db/bin/gpbackup_exporter \
   --gpbackup.history-file=/data/master/gpseg-1/gpbackup_history.db
 ```
 
