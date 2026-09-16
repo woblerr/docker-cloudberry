@@ -13,6 +13,7 @@ The Cloudberry in docker provides the following features:
 - gpbackup/gprestore;
 - gpbackup-s3-plugin;
 - gpbackman;
+- gpbackup_exporter;
 - PXF (Platform Extension Framework);
 - custom initialization scripts;
 - WAL-G (physical backups).
@@ -164,6 +165,18 @@ USER=${CLOUDBERRY_USER} gpconfig -c archive_command -v "wal-g seg wal-push %p --
 USER=${CLOUDBERRY_USER} gpconfig -c archive_timeout -v 600 --skipvalidation
 USER=${CLOUDBERRY_USER} gpstop -u
 ```
+
+#### gpbackup exporter
+
+`gpbackup_exporter` collects Prometheus metrics from `gpbackup_history.db`. It is available in the image but is not started automatically. Start it on the coordinator with the path to its history database. The default `gpadmin` user keeps the exporter from running as root:
+
+```bash
+docker exec -d --user gpadmin <coordinator-container> \
+  /usr/local/cloudberry-db/bin/gpbackup_exporter \
+  --gpbackup.history-file=/data/master/gpseg-1/gpbackup_history.db
+```
+
+By default, it listens on port `19854`, serves metrics at `/metrics`, and refreshes them every 600 seconds. To expose the endpoint outside the container, publish port `19854` in your own Docker Compose configuration.
 
 ### Docker Compose
 #### Prepare
