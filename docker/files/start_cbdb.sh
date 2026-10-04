@@ -186,10 +186,10 @@ initialize_and_start_cbdb_standby() {
     local end_flag=""
     echo "INFO - Initializing standby coordinator host"
     for host in $(cat ${gp_init_host_file}); do
-        ssh-keyscan -t rsa $host >> /home/${CLOUDBERRY_USER}/.ssh/known_hosts 2>/dev/null
+        ssh-keyscan -t rsa $host >> /home/${CLOUDBERRY_USER}/.ssh/known_hosts
     done
     if [ -n "${CLOUDBERRY_COORDINATOR_HOSTNAME:-}" ]; then
-        ssh-keyscan -t rsa "${CLOUDBERRY_COORDINATOR_HOSTNAME}" >> /home/${CLOUDBERRY_USER}/.ssh/known_hosts 2>/dev/null
+        ssh-keyscan -t rsa "${CLOUDBERRY_COORDINATOR_HOSTNAME}" >> /home/${CLOUDBERRY_USER}/.ssh/known_hosts
     else
         error_and_exit "CLOUDBERRY_COORDINATOR_HOSTNAME is required when CLOUDBERRY_DEPLOYMENT=standby; cannot add coordinator's SSH host key to known_hosts."
     fi
@@ -209,10 +209,10 @@ initialize_and_start_cbdb() {
 
     # Scan and add host keys
     for host in $(cat ${gp_init_host_file}); do
-        ssh-keyscan -t rsa $host >> /home/${CLOUDBERRY_USER}/.ssh/known_hosts 2>/dev/null
+        ssh-keyscan -t rsa $host >> /home/${CLOUDBERRY_USER}/.ssh/known_hosts
     done
     if [ -n "${CLOUDBERRY_STANDBY_HOSTNAME:-}" ]; then
-        ssh-keyscan -t rsa "${CLOUDBERRY_STANDBY_HOSTNAME}" >> /home/${CLOUDBERRY_USER}/.ssh/known_hosts 2>/dev/null
+        ssh-keyscan -t rsa "${CLOUDBERRY_STANDBY_HOSTNAME}" >> /home/${CLOUDBERRY_USER}/.ssh/known_hosts
     fi
     chmod 644 /home/${CLOUDBERRY_USER}/.ssh/known_hosts
 
