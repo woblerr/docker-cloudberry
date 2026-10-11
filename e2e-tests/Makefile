@@ -46,3 +46,25 @@ test-e2e-walg-run:
 test-e2e-walg-down:
 	@echo "INFO - Stop e2e tests for wal-g"
 	docker compose -f docker-compose.s3.yml -f docker-compose.cbdb.yml -f docker-compose.cbdb-restore.yml down
+
+.PHONY: test-e2e-yezzey
+test-e2e-yezzey:
+	$(MAKE) test-e2e-yezzey-down
+	$(MAKE) test-e2e-yezzey-up
+	$(MAKE) test-e2e-yezzey-run
+	$(MAKE) test-e2e-yezzey-down
+
+.PHONY: test-e2e-yezzey-up
+test-e2e-yezzey-up:
+	@echo "INFO - Start e2e tests for Yezzey"
+	docker compose -f docker-compose.s3.yml -f docker-compose.yezzey.yml up -d
+
+.PHONY: test-e2e-yezzey-run
+test-e2e-yezzey-run:
+	@echo "INFO - Run e2e tests for Yezzey"
+	CLOUDBERRY_PASSWORD=$(CBDB_PASSWORD) ./scripts/e2e-yezzey-test.sh
+
+.PHONY: test-e2e-yezzey-down
+test-e2e-yezzey-down:
+	@echo "INFO - Stop e2e tests for Yezzey"
+	docker compose -f docker-compose.s3.yml -f docker-compose.yezzey.yml down

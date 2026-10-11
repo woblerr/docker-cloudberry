@@ -104,3 +104,15 @@ docker compose -f ../docker-compose/docker-compose.with_mirrors_and_standby.yaml
 CLOUDBERRY_PASSWORD=$(cat ../docker-compose/secrets/gpdb_password) ./scripts/e2e-standby-coordinator-test.sh
 docker compose -f ../docker-compose/docker-compose.with_mirrors_and_standby.yaml down
 ```
+
+### Yezzey tests
+
+The Yezzey suite is intentionally separate from `test-e2e` because it requires a Cloudberry 2.2 image. It starts Yproxy on the coordinator and both segment hosts, offloads AO and AOCO tables to MinIO, validates reads, DELETE/VACUUM, and loads the data back.
+
+Run:
+
+```bash
+make test-e2e-yezzey
+```
+
+The cluster is defined in `docker-compose.yezzey.yml`; the Yproxy configuration and initialization SQL are under `yezzey/`.

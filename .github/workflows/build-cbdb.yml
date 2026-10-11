@@ -26,17 +26,7 @@ jobs:
               - 'docker/files/entrypoint.sh'
               - 'docker/files/start_cbdb.sh'
               - '.github/workflows/build-cbdb.yml'
-
-      - name: Log build trigger reason
-        run: |
-          if [[ "${{ steps.changed-files.outputs.project_any_changed }}" == "true" || \
-               "${{ steps.changed-files.outputs.common_any_changed }}" == "true" || \
-               "${{ github.ref }}" == "refs/heads/master" || \
-               "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "build_image will run"
-          else
-            echo "build_image will be skipped"
-          fi
+              - 'Makefile'
 
   build_image:
     needs: [detect_changes]
@@ -45,97 +35,118 @@ jobs:
       needs.detect_changes.outputs.common_changed == 'true' ||
       github.ref == 'refs/heads/master' ||
       startsWith(github.ref, 'refs/tags/')
-    # Use native ARM64 runners for arm64 platform, standard x64 runners for amd64
     runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-22.04-arm' || 'ubuntu-22.04' }}
     strategy:
+      fail-fast: false
       matrix:
-        cbdb_version: ["2.1.0-incubating"]
-        os_version: ["ubuntu22.04", "rockylinux9"]
-        platform: ["linux/amd64", "linux/arm64"]
+        profile:
+          - release_line: '2.1'
+            cbdb_version: 2.1.0-incubating
+            os_version: ubuntu22.04
+          - release_line: '2.1'
+            cbdb_version: 2.1.0-incubating
+            os_version: rockylinux9
+          - release_line: '2.2'
+            cbdb_version: 2.2.0-incubating-rc1
+            os_version: ubuntu22.04
+          - release_line: '2.2'
+            cbdb_version: 2.2.0-incubating-rc1
+            os_version: ubuntu24.04
+          - release_line: '2.2'
+            cbdb_version: 2.2.0-incubating-rc1
+            os_version: rockylinux9
+        platform: [linux/amd64, linux/arm64]
     steps:
-    - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
-    - name: Get repo tag
-      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-      id: vars
-      run: |
-        echo "repo_tag=$(echo ${GITHUB_REF} | cut -d'/' -f3)" >> $GITHUB_OUTPUT
-    
-    - name: Set Architecture
-      run: |
-        if [ "${{ matrix.platform }}" = "linux/amd64" ]; then
-          echo "ARCH=amd64" >> $GITHUB_ENV
-        else
-          echo "ARCH=arm64" >> $GITHUB_ENV
-        fi
+      - name: Get repo tag
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        id: vars
+        run: echo "repo_tag=${GITHUB_REF#refs/tags/}" >> "${GITHUB_OUTPUT}"
 
-    - name: Set up Docker Buildx
-      id: buildx
-      uses: docker/setup-buildx-action@v4
+      - name: Set architecture
+        run: echo "ARCH=${PLATFORM#linux/}" >> "${GITHUB_ENV}"
+        env:
+          PLATFORM: ${{ matrix.platform }}
 
-    - name: Login to Docker Hub
-      uses: docker/login-action@v4
-      with:
-        username: ${{ secrets.DOCKEHUB_USER }}
-        password: ${{ secrets.DOCKEHUB_TOKEN }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
 
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v4
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GUTHUB_CR_PAT }}
+      - name: Login to Docker Hub
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKEHUB_USER }}
+          password: ${{ secrets.DOCKEHUB_TOKEN }}
 
-    - name: Build cloudberry image (Test Build)
-      run: |
-        docker buildx build \
-          -f docker/cloudberry/${OS_TAG}/Dockerfile \
-          --platform ${{ matrix.platform }} \
-          --build-arg CBDB_VERSION=${TAG} \
-          --build-arg REPO_BUILD_TAG=${REPO_TAG} \
-          -t cloudberry:${TAG}-${ARCH} .
-      env: 
-        TAG: ${{ matrix.cbdb_version }}
-        OS_TAG: ${{ matrix.os_version }}
-        REPO_TAG: ${{ steps.vars.outputs.repo_tag }}
+      - name: Login to GitHub Container Registry
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GUTHUB_CR_PAT }}
 
-    - name: Build and push platform specific images
-      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-      run: |
-        GHCR_BASE="ghcr.io/${GITHUB_USER}/cloudberry"
-        DH_BASE="${DOCKERHUB_USER}/cloudberry"
+      - name: Build test image
+        run: |
+          docker buildx build \
+            -f "docker/cloudberry/${OS_TAG}/${RELEASE_LINE}/Dockerfile" \
+            --platform "${PLATFORM}" \
+            --build-arg "CBDB_VERSION=${TAG}" \
+            --build-arg "REPO_BUILD_TAG=${REPO_TAG}" \
+            -t "cloudberry:test-${ARCH}" .
+        env:
+          TAG: ${{ matrix.profile.cbdb_version }}
+          RELEASE_LINE: ${{ matrix.profile.release_line }}
+          OS_TAG: ${{ matrix.profile.os_version }}
+          PLATFORM: ${{ matrix.platform }}
+          REPO_TAG: ${{ steps.vars.outputs.repo_tag }}
 
-        docker buildx build --push \
-            -f docker/cloudberry/${OS_TAG}/Dockerfile \
-            --platform ${{ matrix.platform }} \
-            --build-arg CBDB_VERSION=${TAG} \
-            --build-arg REPO_BUILD_TAG=${REPO_TAG} \
-            -t ${GHCR_BASE}:${TAG}-${OS_TAG}-${ARCH} \
-            -t ${GHCR_BASE}:${TAG}-${OS_TAG}-${REPO_TAG}-${ARCH} \
-            -t ${DH_BASE}:${TAG}-${OS_TAG}-${ARCH} \
-            -t ${DH_BASE}:${TAG}-${OS_TAG}-${REPO_TAG}-${ARCH} .
-      env:
-        GITHUB_USER: ${{ github.actor }}
-        GITHUB_PKG: ${{ secrets.GUTHUB_CR_PAT }}
-        DOCKERHUB_USER: ${{ secrets.DOCKEHUB_USER }}
-        DOCKERHUB_PKG: ${{ secrets.DOCKEHUB_TOKEN }}
-        TAG: ${{ matrix.cbdb_version }}
-        OS_TAG: ${{ matrix.os_version }}
-        REPO_TAG: ${{ steps.vars.outputs.repo_tag }}
+      - name: Build and push platform image
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          GHCR_BASE="ghcr.io/${GITHUB_USER}/cloudberry"
+          DH_BASE="${DOCKERHUB_USER}/cloudberry"
+          docker buildx build --push \
+            -f "docker/cloudberry/${OS_TAG}/${RELEASE_LINE}/Dockerfile" \
+            --platform "${PLATFORM}" \
+            --build-arg "CBDB_VERSION=${TAG}" \
+            --build-arg "REPO_BUILD_TAG=${REPO_TAG}" \
+            -t "${GHCR_BASE}:${TAG}-${OS_TAG}-${ARCH}" \
+            -t "${GHCR_BASE}:${TAG}-${OS_TAG}-${REPO_TAG}-${ARCH}" \
+            -t "${DH_BASE}:${TAG}-${OS_TAG}-${ARCH}" \
+            -t "${DH_BASE}:${TAG}-${OS_TAG}-${REPO_TAG}-${ARCH}" .
+        env:
+          GITHUB_USER: ${{ github.actor }}
+          DOCKERHUB_USER: ${{ secrets.DOCKEHUB_USER }}
+          TAG: ${{ matrix.profile.cbdb_version }}
+          RELEASE_LINE: ${{ matrix.profile.release_line }}
+          OS_TAG: ${{ matrix.profile.os_version }}
+          PLATFORM: ${{ matrix.platform }}
+          REPO_TAG: ${{ steps.vars.outputs.repo_tag }}
 
   merge_manifests:
     runs-on: ubuntu-22.04
     needs: build_image
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     strategy:
+      fail-fast: false
       matrix:
-        cbdb_version: ["2.1.0-incubating"]
-        os_version: ["ubuntu22.04", "rockylinux9"]
+        profile:
+          - cbdb_version: 2.1.0-incubating
+            os_version: ubuntu22.04
+          - cbdb_version: 2.1.0-incubating
+            os_version: rockylinux9
+          - cbdb_version: 2.2.0-incubating-rc1
+            os_version: ubuntu22.04
+          - cbdb_version: 2.2.0-incubating-rc1
+            os_version: ubuntu24.04
+          - cbdb_version: 2.2.0-incubating-rc1
+            os_version: rockylinux9
     steps:
       - name: Get repo tag
         id: vars
-        run: |
-          echo "repo_tag=$(echo ${GITHUB_REF} | cut -d'/' -f3)" >> $GITHUB_OUTPUT
+        run: echo "repo_tag=${GITHUB_REF#refs/tags/}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -153,60 +164,41 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GUTHUB_CR_PAT }}
 
-      - name: Create and push manifest lists
+      - name: Create and push OS manifest lists
         run: |
           GHCR_BASE="ghcr.io/${GITHUB_USER}/cloudberry"
           DH_BASE="${DOCKERHUB_USER}/cloudberry"
-          
-          docker buildx imagetools create -t ${GHCR_BASE}:${TAG}-${OS_TAG} \
-            ${GHCR_BASE}:${TAG}-${OS_TAG}-amd64 \
-            ${GHCR_BASE}:${TAG}-${OS_TAG}-arm64
-            
-          docker buildx imagetools create -t ${DH_BASE}:${TAG}-${OS_TAG} \
-            ${DH_BASE}:${TAG}-${OS_TAG}-amd64 \
-            ${DH_BASE}:${TAG}-${OS_TAG}-arm64
-
-          docker buildx imagetools create -t ${GHCR_BASE}:${TAG}-${OS_TAG}-${REPO_TAG} \
-            ${GHCR_BASE}:${TAG}-${OS_TAG}-${REPO_TAG}-amd64 \
-            ${GHCR_BASE}:${TAG}-${OS_TAG}-${REPO_TAG}-arm64
-            
-          docker buildx imagetools create -t ${DH_BASE}:${TAG}-${OS_TAG}-${REPO_TAG} \
-            ${DH_BASE}:${TAG}-${OS_TAG}-${REPO_TAG}-amd64 \
-            ${DH_BASE}:${TAG}-${OS_TAG}-${REPO_TAG}-arm64
-
+          for BASE in "${GHCR_BASE}" "${DH_BASE}"; do
+            docker buildx imagetools create -t "${BASE}:${TAG}-${OS_TAG}" \
+              "${BASE}:${TAG}-${OS_TAG}-amd64" \
+              "${BASE}:${TAG}-${OS_TAG}-arm64"
+            docker buildx imagetools create -t "${BASE}:${TAG}-${OS_TAG}-${REPO_TAG}" \
+              "${BASE}:${TAG}-${OS_TAG}-${REPO_TAG}-amd64" \
+              "${BASE}:${TAG}-${OS_TAG}-${REPO_TAG}-arm64"
+          done
         env:
           GITHUB_USER: ${{ github.actor }}
           DOCKERHUB_USER: ${{ secrets.DOCKEHUB_USER }}
-          TAG: ${{ matrix.cbdb_version }}
-          OS_TAG: ${{ matrix.os_version }}
+          TAG: ${{ matrix.profile.cbdb_version }}
+          OS_TAG: ${{ matrix.profile.os_version }}
           REPO_TAG: ${{ steps.vars.outputs.repo_tag }}
 
-      - name: Create and push default manifest lists (ubuntu22.04 only)
-        if: matrix.os_version == 'ubuntu22.04'
+      - name: Create and push default manifest lists
+        if: matrix.profile.os_version == 'ubuntu22.04'
         run: |
           GHCR_BASE="ghcr.io/${GITHUB_USER}/cloudberry"
           DH_BASE="${DOCKERHUB_USER}/cloudberry"
-
-          # 1. Manifest for ${TAG}
-          docker buildx imagetools create -t ${GHCR_BASE}:${TAG} \
-            ${GHCR_BASE}:${TAG}-${OS_TAG}-amd64 \
-            ${GHCR_BASE}:${TAG}-${OS_TAG}-arm64
-            
-          docker buildx imagetools create -t ${DH_BASE}:${TAG} \
-            ${DH_BASE}:${TAG}-${OS_TAG}-amd64 \
-            ${DH_BASE}:${TAG}-${OS_TAG}-arm64
-
-          # 2. Manifest for ${TAG}-${REPO_TAG}
-          docker buildx imagetools create -t ${GHCR_BASE}:${TAG}-${REPO_TAG} \
-            ${GHCR_BASE}:${TAG}-${OS_TAG}-${REPO_TAG}-amd64 \
-            ${GHCR_BASE}:${TAG}-${OS_TAG}-${REPO_TAG}-arm64
-            
-          docker buildx imagetools create -t ${DH_BASE}:${TAG}-${REPO_TAG} \
-            ${DH_BASE}:${TAG}-${OS_TAG}-${REPO_TAG}-amd64 \
-            ${DH_BASE}:${TAG}-${OS_TAG}-${REPO_TAG}-arm64
+          for BASE in "${GHCR_BASE}" "${DH_BASE}"; do
+            docker buildx imagetools create -t "${BASE}:${TAG}" \
+              "${BASE}:${TAG}-${OS_TAG}-amd64" \
+              "${BASE}:${TAG}-${OS_TAG}-arm64"
+            docker buildx imagetools create -t "${BASE}:${TAG}-${REPO_TAG}" \
+              "${BASE}:${TAG}-${OS_TAG}-${REPO_TAG}-amd64" \
+              "${BASE}:${TAG}-${OS_TAG}-${REPO_TAG}-arm64"
+          done
         env:
           GITHUB_USER: ${{ github.actor }}
           DOCKERHUB_USER: ${{ secrets.DOCKEHUB_USER }}
-          TAG: ${{ matrix.cbdb_version }}
-          OS_TAG: ${{ matrix.os_version }}
+          TAG: ${{ matrix.profile.cbdb_version }}
+          OS_TAG: ${{ matrix.profile.os_version }}
           REPO_TAG: ${{ steps.vars.outputs.repo_tag }}
