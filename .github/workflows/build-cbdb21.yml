@@ -1,4 +1,4 @@
-name: build-cbdb
+name: build-cbdb21
 
 on: [push, pull_request]
 
@@ -21,40 +21,26 @@ jobs:
         with:
           files_yaml: |
             project:
-              - 'docker/cloudberry/**'
+              - 'docker/cloudberry/**/2.1/**'
+              - '.github/workflows/build-cbdb21.yml'
             common:
-              - 'docker/files/entrypoint.sh'
-              - 'docker/files/start_cbdb.sh'
-              - '.github/workflows/build-cbdb.yml'
+              - 'docker/files/**'
               - 'Makefile'
+              - '.dockerignore'
+              - '.gitattributes'
 
   build_image:
     needs: [detect_changes]
     if: |
       needs.detect_changes.outputs.project_changed == 'true' ||
       needs.detect_changes.outputs.common_changed == 'true' ||
-      github.ref == 'refs/heads/master' ||
       startsWith(github.ref, 'refs/tags/')
     runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-22.04-arm' || 'ubuntu-22.04' }}
     strategy:
       fail-fast: false
       matrix:
-        profile:
-          - release_line: '2.1'
-            cbdb_version: 2.1.0-incubating
-            os_version: ubuntu22.04
-          - release_line: '2.1'
-            cbdb_version: 2.1.0-incubating
-            os_version: rockylinux9
-          - release_line: '2.2'
-            cbdb_version: 2.2.0-incubating-rc1
-            os_version: ubuntu22.04
-          - release_line: '2.2'
-            cbdb_version: 2.2.0-incubating-rc1
-            os_version: ubuntu24.04
-          - release_line: '2.2'
-            cbdb_version: 2.2.0-incubating-rc1
-            os_version: rockylinux9
+        cbdb_version: [2.1.0-incubating]
+        os_version: [ubuntu22.04, rockylinux9]
         platform: [linux/amd64, linux/arm64]
     steps:
       - uses: actions/checkout@v7
@@ -96,9 +82,9 @@ jobs:
             --build-arg "REPO_BUILD_TAG=${REPO_TAG}" \
             -t "cloudberry:test-${ARCH}" .
         env:
-          TAG: ${{ matrix.profile.cbdb_version }}
-          RELEASE_LINE: ${{ matrix.profile.release_line }}
-          OS_TAG: ${{ matrix.profile.os_version }}
+          TAG: ${{ matrix.cbdb_version }}
+          RELEASE_LINE: '2.1'
+          OS_TAG: ${{ matrix.os_version }}
           PLATFORM: ${{ matrix.platform }}
           REPO_TAG: ${{ steps.vars.outputs.repo_tag }}
 
@@ -119,9 +105,9 @@ jobs:
         env:
           GITHUB_USER: ${{ github.actor }}
           DOCKERHUB_USER: ${{ secrets.DOCKEHUB_USER }}
-          TAG: ${{ matrix.profile.cbdb_version }}
-          RELEASE_LINE: ${{ matrix.profile.release_line }}
-          OS_TAG: ${{ matrix.profile.os_version }}
+          TAG: ${{ matrix.cbdb_version }}
+          RELEASE_LINE: '2.1'
+          OS_TAG: ${{ matrix.os_version }}
           PLATFORM: ${{ matrix.platform }}
           REPO_TAG: ${{ steps.vars.outputs.repo_tag }}
 
@@ -132,17 +118,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        profile:
-          - cbdb_version: 2.1.0-incubating
-            os_version: ubuntu22.04
-          - cbdb_version: 2.1.0-incubating
-            os_version: rockylinux9
-          - cbdb_version: 2.2.0-incubating-rc1
-            os_version: ubuntu22.04
-          - cbdb_version: 2.2.0-incubating-rc1
-            os_version: ubuntu24.04
-          - cbdb_version: 2.2.0-incubating-rc1
-            os_version: rockylinux9
+        cbdb_version: [2.1.0-incubating]
+        os_version: [ubuntu22.04, rockylinux9]
     steps:
       - name: Get repo tag
         id: vars
@@ -179,12 +156,12 @@ jobs:
         env:
           GITHUB_USER: ${{ github.actor }}
           DOCKERHUB_USER: ${{ secrets.DOCKEHUB_USER }}
-          TAG: ${{ matrix.profile.cbdb_version }}
-          OS_TAG: ${{ matrix.profile.os_version }}
+          TAG: ${{ matrix.cbdb_version }}
+          OS_TAG: ${{ matrix.os_version }}
           REPO_TAG: ${{ steps.vars.outputs.repo_tag }}
 
       - name: Create and push default manifest lists
-        if: matrix.profile.os_version == 'ubuntu22.04'
+        if: matrix.os_version == 'ubuntu22.04'
         run: |
           GHCR_BASE="ghcr.io/${GITHUB_USER}/cloudberry"
           DH_BASE="${DOCKERHUB_USER}/cloudberry"
@@ -199,6 +176,6 @@ jobs:
         env:
           GITHUB_USER: ${{ github.actor }}
           DOCKERHUB_USER: ${{ secrets.DOCKEHUB_USER }}
-          TAG: ${{ matrix.profile.cbdb_version }}
-          OS_TAG: ${{ matrix.profile.os_version }}
+          TAG: ${{ matrix.cbdb_version }}
+          OS_TAG: ${{ matrix.os_version }}
           REPO_TAG: ${{ steps.vars.outputs.repo_tag }}
