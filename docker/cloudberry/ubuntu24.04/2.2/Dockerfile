@@ -1,18 +1,21 @@
 ARG REPO_BUILD_TAG
-ARG UBUNTU_VERSION="22.04"
+ARG UBUNTU_VERSION="24.04"
+ARG BUILD_JOBS="2"
 ARG GOLANG_VERSION="1.25.14"
 ARG CBDB_DOWNLOAD_URL="https://github.com/apache/cloudberry"
-ARG CBDB_VERSION="2.1.0-incubating"
+ARG CBDB_VERSION="2.2.0-incubating-rc1"
 ARG PXF_DOWNLOAD_URL="https://github.com/apache/cloudberry-pxf"
-ARG PXF_VERSION="2.1.0-incubating"
+ARG PXF_VERSION="2.2.0-incubating-rc1"
 ARG CBDB_BACKUP_DOWNLOAD_URL="https://github.com/apache/cloudberry-backup"
-ARG CBDB_BACKUP_VERSION="6c326e7889eee4508c1eaa6fe596d7f124faf0ed"
+ARG CBDB_BACKUP_VERSION="2.2.0-incubating-rc1"
 ARG WALG_DOWNLOAD_URL="https://github.com/wal-g/wal-g"
-# Keep WAL-G pinned to a tested Cloudberry-compatible commit.
 ARG WALG_VERSION="v3.0.9"
+ARG YPROXY_DOWNLOAD_URL="https://github.com/open-gpdb/yproxy"
+ARG YPROXY_VERSION="1.7.8"
 
 FROM ubuntu:${UBUNTU_VERSION} AS builder
 
+ARG BUILD_JOBS
 ARG CBDB_DOWNLOAD_URL
 ARG CBDB_VERSION
 
@@ -63,6 +66,7 @@ RUN apt-get update \
         python3-pygresql \
         python3-psycopg2 \
         python3-setuptools \
+        python3-wheel \
         python3-yaml \
         pkg-config \
         sudo \
@@ -80,6 +84,7 @@ RUN apt-get update \
 # cloudberry
 RUN git clone --recurse-submodules --depth 1 --branch ${CBDB_VERSION} ${CBDB_DOWNLOAD_URL} /tmp/cloudberry \
     && cd /tmp/cloudberry \
+    && make -C gpMgmt/bin download-python-deps \
     && ./configure --prefix=/usr/local/cloudberry-db \
         --disable-external-fts \
         --enable-gpcloud \
@@ -89,6 +94,8 @@ RUN git clone --recurse-submodules --depth 1 --branch ${CBDB_VERSION} ${CBDB_DOW
         --enable-orca \
         --enable-pax \
         --disable-pxf \
+        --with-diskquota \
+        --with-gp-stats-collector \
         --with-gssapi \
         --with-ldap \
         --with-libxml \
@@ -99,72 +106,69 @@ RUN git clone --recurse-submodules --depth 1 --branch ${CBDB_VERSION} ${CBDB_DOW
         --with-pythonsrc-ext \
         --with-ssl=openssl \
         --with-uuid=e2fs \
+        --with-yezzey \
         --enable-gpfdist \
-    && make -j2 \
+    && make -j${BUILD_JOBS} \
     && make install \
     && make -C contrib install \
-    # && make -C gpcontrib/diskquota install \
+    && IS_CLOUDBERRY=true make -j${BUILD_JOBS} -C gpcontrib/yezzey \
+    && IS_CLOUDBERRY=true make -C gpcontrib/yezzey install \
     && rm -rf /tmp/cloudberry
 
-FROM builder AS go_builder
+FROM builder AS components_builder
+
+ARG BUILD_JOBS
 ARG GOLANG_VERSION
+ARG TARGETARCH
 ARG CBDB_BACKUP_DOWNLOAD_URL
 ARG CBDB_BACKUP_VERSION
 ARG PXF_DOWNLOAD_URL
 ARG PXF_VERSION
 ARG WALG_DOWNLOAD_URL
 ARG WALG_VERSION
+ARG YPROXY_DOWNLOAD_URL
+ARG YPROXY_VERSION
 
 RUN mkdir -p /opt/go \
-    && wget https://go.dev/dl/go${GOLANG_VERSION}.linux-$(dpkg --print-architecture).tar.gz \
-    && tar -xvf go${GOLANG_VERSION}.linux-$(dpkg --print-architecture).tar.gz -C /usr/local
+    && wget https://go.dev/dl/go${GOLANG_VERSION}.linux-${TARGETARCH}.tar.gz \
+    && tar -xzf go${GOLANG_VERSION}.linux-${TARGETARCH}.tar.gz -C /usr/local \
+    && rm -f go${GOLANG_VERSION}.linux-${TARGETARCH}.tar.gz
 
 ENV PATH="$PATH:/usr/local/go/bin"
 ENV GOPATH=/opt/go
 
 # cloudberry-backup (gpbackup, gprestore, gpbackup_helper, gpbackup_s3_plugin, gpbackman, gpbackup_exporter)
-RUN git clone ${CBDB_BACKUP_DOWNLOAD_URL} /tmp/cloudberry-backup \
+RUN git clone --depth 1 --branch ${CBDB_BACKUP_VERSION} ${CBDB_BACKUP_DOWNLOAD_URL} /tmp/cloudberry-backup \
     && cd /tmp/cloudberry-backup \
-    && git checkout ${CBDB_BACKUP_VERSION} \
     && make depend \
     && make build GIT_VERSION=${CBDB_BACKUP_VERSION} \
     && rm -rf /tmp/cloudberry-backup
 
 # wal-g
-# Don't use USE_LZO=1, there is no need to build with WAL-E compatibility
-# See https://github.com/wal-g/wal-g/issues/1412#issuecomment-1401890162
-RUN git clone ${WALG_DOWNLOAD_URL} /tmp/wal-g \
+# Don't use USE_LZO=1, there is no need to build with WAL-E compatibility.
+RUN git clone --depth 1 --branch ${WALG_VERSION} ${WALG_DOWNLOAD_URL} /tmp/wal-g \
     && cd /tmp/wal-g \
-    && git checkout ${WALG_VERSION} \
-    && USE_BROTLI=1 \
-       USE_LIBSODIUM=1 \
-       make deps \
-    && USE_BROTLI=1 \
-       USE_LIBSODIUM=1 \
-       make gp_build
+    && USE_BROTLI=1 USE_LIBSODIUM=1 make deps \
+    && USE_BROTLI=1 USE_LIBSODIUM=1 make gp_build
 
 # cloudberry-pxf
-# Build pxf without tests
-# Components: external-table, fdw, cli, servers
 ENV PATH="/usr/local/cloudberry-db/bin:${PATH}"
 
-RUN git clone ${PXF_DOWNLOAD_URL} /tmp/cloudberry-pxf \
+RUN git clone --depth 1 --branch ${PXF_VERSION} ${PXF_DOWNLOAD_URL} /tmp/cloudberry-pxf \
     && cd /tmp/cloudberry-pxf \
-    && git checkout ${PXF_VERSION} \
-    && PXF_HOME=/usr/local/pxf \
-       make -j2 -C external-table install \
-    && PXF_HOME=/usr/local/pxf \
-       make -j2 -C fdw install \
-    && PXF_HOME=/usr/local/pxf \
-       make -j2 -C cli install \
-    && PXF_HOME=/usr/local/pxf \
-       make -j2 -C server install-server \
+    && PXF_HOME=/usr/local/pxf make -j${BUILD_JOBS} -C external-table install \
+    && PXF_HOME=/usr/local/pxf make -j${BUILD_JOBS} -C fdw install \
+    && PXF_HOME=/usr/local/pxf make -j${BUILD_JOBS} -C cli install \
+    && PXF_HOME=/usr/local/pxf make -j${BUILD_JOBS} -C server install-server \
     && rm -rf /tmp/cloudberry-pxf
+
+# yproxy
+RUN git clone --depth 1 --branch ${YPROXY_VERSION} ${YPROXY_DOWNLOAD_URL} /tmp/yproxy \
+    && make -C /tmp/yproxy build
 
 FROM ubuntu:${UBUNTU_VERSION} AS final
 
 ARG REPO_BUILD_TAG
-ARG CBDB_VERSION
 
 ENV TZ="Etc/UTC" \
     CLOUDBERRY_USER="gpadmin" \
@@ -177,28 +181,29 @@ ENV TZ="Etc/UTC" \
     CLOUDBERRY_DATABASE_NAME="demo" \
     CLOUDBERRY_DISKQUOTA_ENABLE="false" \
     CLOUDBERRY_PXF_ENABLE="false" \
-    CLOUDBERRY_WALG_ENABLE="false"
+    CLOUDBERRY_WALG_ENABLE="false" \
+    CLOUDBERRY_YEZZEY_ENABLE="false"
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         libbz2-1.0 \
-        libcurl3-gnutls \
-        libcurl4 \
-        libevent-2.1-7 \
+        libcurl3t64-gnutls \
+        libcurl4t64 \
+        libevent-2.1-7t64 \
         libkrb5-3 \
         libpam0g \
-        libreadline8 \
-        libssl3 \
-        libuv1 \
+        libreadline8t64 \
+        libssl3t64 \
+        libuv1t64 \
         libxml2 \
         libyaml-0-2 \
         libzstd1 \
         zlib1g \
-        libldap-2.5-0 \
+        libldap2 \
         liblz4-1 \
-        libprotobuf23 \
+        libprotobuf32t64 \
         liburing2 \
-        libxerces-c3.2 \
+        libxerces-c3.2t64 \
         inetutils-ping \
         krb5-kdc \
         krb5-admin-server \
@@ -214,6 +219,7 @@ RUN apt-get update \
         tar \
         zip \
         net-tools \
+        netcat-openbsd \
         less \
         locales \
         iproute2 \
@@ -241,27 +247,17 @@ RUN groupadd --gid ${CLOUDBERRY_GID} ${CLOUDBERRY_GROUP} \
     && echo "PubkeyAcceptedKeyTypes +ssh-rsa" >> /etc/ssh/sshd_config \
     && echo "${CLOUDBERRY_USER} ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers \
     && echo "source /usr/local/cloudberry-db/cloudberry-env.sh" > /home/${CLOUDBERRY_USER}/.bashrc \
-    && ARCH=$(dpkg --print-architecture) \
-    && case "${ARCH}" in \
-        arm64) echo "export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-arm64" >> /home/${CLOUDBERRY_USER}/.bashrc ;; \
-        amd64) echo "export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64" >> /home/${CLOUDBERRY_USER}/.bashrc ;; \
-        *) echo >&2 "error: unknown/unsupported architecture '${ARCH}'"; exit 1 ;; \
-    esac \
+    && echo 'export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"' >> /home/${CLOUDBERRY_USER}/.bashrc \
     && echo 'export PATH="/usr/local/pxf/bin:${PATH}"' >> /home/${CLOUDBERRY_USER}/.bashrc \
     && echo "export PXF_BASE=${CLOUDBERRY_DATA_DIRECTORY}/pxf" >> /home/${CLOUDBERRY_USER}/.bashrc \
-    && mkdir -p ${CLOUDBERRY_DATA_DIRECTORY} \
-                ${CLOUDBERRY_DATA_DIRECTORY}/pxf \
-                /docker-entrypoint-initdb.d \
-    && chown -R ${CLOUDBERRY_USER}:${CLOUDBERRY_GROUP} \
-        /home/${CLOUDBERRY_USER}/ \
-        ${CLOUDBERRY_DATA_DIRECTORY} \
-        /docker-entrypoint-initdb.d \
+    && mkdir -p ${CLOUDBERRY_DATA_DIRECTORY} ${CLOUDBERRY_DATA_DIRECTORY}/pxf /docker-entrypoint-initdb.d \
+    && chown -R ${CLOUDBERRY_USER}:${CLOUDBERRY_GROUP} /home/${CLOUDBERRY_USER}/ ${CLOUDBERRY_DATA_DIRECTORY} /docker-entrypoint-initdb.d \
     && unlink /etc/localtime \
     && cp /usr/share/zoneinfo/${TZ} /etc/localtime \
     && echo "${TZ}" > /etc/timezone
 
-COPY --chown=${CLOUDBERRY_USER}:${CLOUDBERRY_GROUP} --from=go_builder /usr/local/cloudberry-db /usr/local/cloudberry-db
-COPY --chown=${CLOUDBERRY_USER}:${CLOUDBERRY_GROUP} --from=go_builder \
+COPY --chown=${CLOUDBERRY_USER}:${CLOUDBERRY_GROUP} --from=components_builder /usr/local/cloudberry-db /usr/local/cloudberry-db
+COPY --chown=${CLOUDBERRY_USER}:${CLOUDBERRY_GROUP} --from=components_builder \
     /opt/go/bin/gpbackup \
     /opt/go/bin/gprestore \
     /opt/go/bin/gpbackup_helper \
@@ -269,8 +265,9 @@ COPY --chown=${CLOUDBERRY_USER}:${CLOUDBERRY_GROUP} --from=go_builder \
     /opt/go/bin/gpbackman \
     /opt/go/bin/gpbackup_exporter \
     /usr/local/cloudberry-db/bin/
-COPY --chown=${CLOUDBERRY_USER}:${CLOUDBERRY_GROUP} --from=go_builder /usr/local/pxf /usr/local/pxf
-COPY --chown=${CLOUDBERRY_USER}:${CLOUDBERRY_GROUP} --from=go_builder /tmp/wal-g/main/gp/wal-g /usr/local/cloudberry-db/bin/wal-g
+COPY --chown=${CLOUDBERRY_USER}:${CLOUDBERRY_GROUP} --from=components_builder /usr/local/pxf /usr/local/pxf
+COPY --chown=${CLOUDBERRY_USER}:${CLOUDBERRY_GROUP} --from=components_builder /tmp/wal-g/main/gp/wal-g /usr/local/cloudberry-db/bin/wal-g
+COPY --chown=${CLOUDBERRY_USER}:${CLOUDBERRY_GROUP} --from=components_builder /tmp/yproxy/devbin/yproxy /tmp/yproxy/devbin/yp-client /usr/local/cloudberry-db/bin/
 COPY --chmod=755 docker/files/entrypoint.sh /entrypoint.sh
 COPY --chmod=755 docker/files/start_cbdb.sh /start_cbdb.sh
 

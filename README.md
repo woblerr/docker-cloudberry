@@ -16,7 +16,8 @@ The Cloudberry in docker provides the following features:
 - gpbackup_exporter;
 - PXF (Platform Extension Framework);
 - custom initialization scripts;
-- WAL-G (physical backups).
+- WAL-G (physical backups);
+- Yezzey with Yproxy for S3 offload (Cloudberry 2.2 only).
 
 
 Environment variables supported by this image:
@@ -33,6 +34,7 @@ Environment variables supported by this image:
 * `CLOUDBERRY_DISKQUOTA_ENABLE` - enable diskquota, default `false`. Note: diskquota extension is not available in 2.1.0-incubating, the setting will be silently skipped;
 * `CLOUDBERRY_PXF_ENABLE` - enable PXF, default `false`;
 * `CLOUDBERRY_WALG_ENABLE` - enable WAL-G, default `false`;
+* `CLOUDBERRY_YEZZEY_ENABLE` - enable Yezzey and start Yproxy, default `false`; available only in Cloudberry 2.2, requires `/data/yproxy.yaml` on every coordinator and segment host, and must be enabled during the initial cluster initialization;
 * `CLOUDBERRY_STANDBY_HOSTNAME` - standby coordinator hostname, used when `CLOUDBERRY_DEPLOYMENT=master` to add standby's SSH host key to `known_hosts` and initialize standby coordinator via `gpinitstandby`, optional;
 * `CLOUDBERRY_COORDINATOR_HOSTNAME` - coordinator hostname, used when `CLOUDBERRY_DEPLOYMENT=standby` to add coordinator's SSH host key to `known_hosts`; required when `CLOUDBERRY_DEPLOYMENT=standby`;
 
@@ -43,9 +45,10 @@ Required environment variables:
 
 The repository contains information for the last available versions. For specific version, you can build your own image using the [Build](#build) section.
 
-| Image | CBDB Version | Ubuntu 22.04 | Rocky Linux 9 | Platform |
+| CBDB version | Ubuntu 22.04 | Ubuntu 24.04 | Rocky Linux 9 | Platform |
 |---|---|---|---|---|
-| cloudberry | 2.1.0-incubating | `2.1.0-incubating`, `2.1.0-incubating-ubuntu22.04` | `2.1.0-incubating-rockylinux9` | `linux/amd64`, `linux/arm64` |
+| 2.1.0-incubating | `2.1.0-incubating`, `2.1.0-incubating-ubuntu22.04` | — | `2.1.0-incubating-rockylinux9` | `linux/amd64`, `linux/arm64` |
+| 2.2.0-incubating-rc1 | `2.2.0-incubating-rc1`, `2.2.0-incubating-rc1-ubuntu22.04` | `2.2.0-incubating-rc1-ubuntu24.04` | `2.2.0-incubating-rc1-rockylinux9` | `linux/amd64`, `linux/arm64` |
 
 ## Pull
 
@@ -70,7 +73,7 @@ You will need to mount the necessary directories or files inside the container (
 ### Simple
 
 ```bash
-docker run -p 5432:5432 -e CLOUDBERRY_PASSWORD=gparray -d cloudberry:2.1.0-incubating
+docker run -p 5432:5432 -e CLOUDBERRY_PASSWORD=gparray -d cloudberry:2.2.0-incubating-rc1
 ```
 
 Connect to Cloudberry:
@@ -85,7 +88,7 @@ As an alternative to passing sensitive information via environment variables, `_
 
 For example:
 ```bash
-docker run -p 5432:5432 -e CLOUDBERRY_PASSWORD_FILE=/run/secrets/gpdb_password -d cloudberry:2.1.0-incubating
+docker run -p 5432:5432 -e CLOUDBERRY_PASSWORD_FILE=/run/secrets/gpdb_password -d cloudberry:2.2.0-incubating-rc1
 ```
 
 ### Initialization Scripts
@@ -166,6 +169,10 @@ USER=${CLOUDBERRY_USER} gpconfig -c archive_timeout -v 600 --skipvalidation
 USER=${CLOUDBERRY_USER} gpstop -u
 ```
 
+#### Yezzey and Yproxy
+
+Cloudberry 2.2 images can enable S3 offload with `CLOUDBERRY_YEZZEY_ENABLE=true`. Mount the Yproxy configuration at `/data/yproxy.yaml` on every cluster host. See the [Yezzey and Yproxy guide](docs/yezzey_yproxy.md) for configuration and a complete Compose example.
+
 #### gpbackup exporter
 
 `gpbackup_exporter` collects Prometheus metrics from `gpbackup_history.db`. It is available in the image but is not started automatically. Start it on the coordinator with the path to its history database. The default `gpadmin` user keeps the exporter from running as root:
@@ -245,41 +252,48 @@ docker compose -f ./docker-compose/docker-compose.with_mirrors_and_standby.yaml 
 
 ## Build
 
-For Ubuntu based images:
+Build the default Ubuntu 22.04 profiles for both release lines:
+
 ```bash
-make build_cbdb_ubuntu TAG_CBDB=2.1.0-incubating
+make all
 ```
 
-For Rocky Linux based images:
+Build a specific profile:
+
 ```bash
-make build_cbdb_rockylinux TAG_CBDB=2.1.0-incubating
+make build_cbdb_21_ubuntu22
+make build_cbdb_21_rockylinux9
+make build_cbdb_22_ubuntu22
+make build_cbdb_22_ubuntu24
+make build_cbdb_22_rockylinux9
 ```
 
-**Manual build examples:**
+The release-line tags and parallelism can be overridden without editing Dockerfiles:
 
-Ubuntu simple manual build:
 ```bash
-docker buildx build -f docker/cloudberry/ubuntu22.04/Dockerfile -t cloudberry:2.1.0-incubating .
+make build_cbdb_22_ubuntu24 TAG_CBDB_22=2.2.0-incubating-rc1 BUILD_JOBS=4
 ```
 
-Rocky Linux simple manual build:
-```bash
-docker buildx build -f docker/cloudberry/rockylinux9/Dockerfile -t cloudberry:2.1.0-incubating-rockylinux9 .
-```
+Each Dockerfile also accepts component build arguments: `CBDB_VERSION`, `PXF_VERSION`, `CBDB_BACKUP_VERSION`, `WALG_VERSION`, `GOLANG_VERSION`, `YPROXY_VERSION` (2.2 only), the base OS version, `BUILD_JOBS`, and `REPO_BUILD_TAG`. Java remains fixed at version 11. The 2.1 backup pin remains unchanged.
 
-Manual build with specific component version for `linux/amd64` platform:
-```bash
-docker buildx build --platform linux/amd64 -f docker/cloudberry/ubuntu22.04/Dockerfile --build-arg CBDB_VERSION=2.1.0-incubating -t cloudberry:2.1.0-incubating .
-```
+**Manual build example:**
 
-Manual build with specific component versions for `linux/amd64` and `linux/arm64` platforms:
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f docker/cloudberry/ubuntu22.04/Dockerfile --build-arg CBDB_VERSION=2.1.0-incubating -t cloudberry:2.1.0-incubating .
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -f docker/cloudberry/ubuntu22.04/2.2/Dockerfile \
+  --build-arg BUILD_JOBS=4 \
+  -t cloudberry:2.2.0-incubating-rc1 .
 ```
 
 ## Running tests
 Run the end-to-end tests:
 ```bash
 make test-e2e
+```
+
+Run the separate Cloudberry 2.2 Yezzey test:
+
+```bash
+make test-e2e-yezzey
 ```
 See [tests description](./e2e-tests/README.md).

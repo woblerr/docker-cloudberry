@@ -1,5 +1,6 @@
 ARG REPO_BUILD_TAG
 ARG ROCKY_VERSION="9"
+ARG BUILD_JOBS="2"
 ARG GOLANG_VERSION="1.25.14"
 ARG XERCES_C_DOWNLOAD_URL="https://archive.apache.org/dist/xerces/c/3/sources"
 ARG XERCES_C_VERSION="3.3.0"
@@ -16,6 +17,7 @@ ARG GOSU_VERSION="1.19"
 
 FROM rockylinux/rockylinux:${ROCKY_VERSION} AS builder
 
+ARG BUILD_JOBS
 ARG XERCES_C_DOWNLOAD_URL
 ARG XERCES_C_VERSION
 ARG CBDB_DOWNLOAD_URL
@@ -93,7 +95,7 @@ RUN wget ${XERCES_C_DOWNLOAD_URL}/xerces-c-${XERCES_C_VERSION}.tar.gz -O /tmp/xe
     && tar -xzf /tmp/xerces-c-${XERCES_C_VERSION}.tar.gz --strip-components=1 -C /tmp/xerces-c \
     && cd /tmp/xerces-c \
     && ./configure --prefix=/usr/local/xerces-c \
-    && make -j2 \
+    && make -j${BUILD_JOBS} \
     && make install \
     && ldconfig \
     && rm -rf \
@@ -129,7 +131,7 @@ RUN git clone --recurse-submodules --depth 1 --branch ${CBDB_VERSION} ${CBDB_DOW
         --enable-gpfdist \
         --with-includes=/usr/local/xerces-c/include \
         --with-libraries=/usr/local/cloudberry-db/lib \
-    && make -j2 \
+    && make -j${BUILD_JOBS} \
     && make install \
     && make -C contrib install \
     # && make -C gpcontrib/diskquota install \
@@ -139,6 +141,7 @@ RUN git clone --recurse-submodules --depth 1 --branch ${CBDB_VERSION} ${CBDB_DOW
 RUN PATH=${PATH}:/usr/local/cloudberry-db/bin pip3 install --no-cache-dir PyGreSQL
 
 FROM builder AS go_builder
+ARG BUILD_JOBS
 ARG GOLANG_VERSION
 ARG CBDB_BACKUP_DOWNLOAD_URL
 ARG CBDB_BACKUP_VERSION
@@ -190,13 +193,13 @@ RUN git clone ${PXF_DOWNLOAD_URL} /tmp/cloudberry-pxf \
     && cd /tmp/cloudberry-pxf \
     && git checkout ${PXF_VERSION} \
     && PXF_HOME=/usr/local/pxf \
-       make -j2 -C external-table install \
+       make -j${BUILD_JOBS} -C external-table install \
     && PXF_HOME=/usr/local/pxf \
-       make -j2 -C fdw install \
+       make -j${BUILD_JOBS} -C fdw install \
     && PXF_HOME=/usr/local/pxf \
-       make -j2 -C cli install \
+       make -j${BUILD_JOBS} -C cli install \
     && PXF_HOME=/usr/local/pxf \
-       make -j2 -C server install-server \
+       make -j${BUILD_JOBS} -C server install-server \
     && rm -rf /tmp/cloudberry-pxf
 
 FROM rockylinux/rockylinux:${ROCKY_VERSION} AS final
@@ -216,7 +219,8 @@ ENV TZ="Etc/UTC" \
     CLOUDBERRY_DATABASE_NAME="demo" \
     CLOUDBERRY_DISKQUOTA_ENABLE="false" \
     CLOUDBERRY_PXF_ENABLE="false" \
-    CLOUDBERRY_WALG_ENABLE="false"
+    CLOUDBERRY_WALG_ENABLE="false" \
+    CLOUDBERRY_YEZZEY_ENABLE="false"
 
 RUN dnf -y update \
     && dnf -y --allowerasing install \
@@ -299,7 +303,7 @@ RUN groupadd --gid ${CLOUDBERRY_GID} ${CLOUDBERRY_GROUP} \
     && echo "PubkeyAcceptedKeyTypes +ssh-rsa" >> /etc/ssh/sshd_config \
     && echo "${CLOUDBERRY_USER} ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers \
     && echo "source /usr/local/cloudberry-db/cloudberry-env.sh" > /home/${CLOUDBERRY_USER}/.bashrc \
-    && echo "export JAVA_HOME=/usr/lib/jvm/jre-11-openjdk" >> /home/${CLOUDBERRY_USER}/.bashrc \
+    && echo 'export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"' >> /home/${CLOUDBERRY_USER}/.bashrc \
     && echo 'export PATH="/usr/local/pxf/bin:${PATH}"' >> /home/${CLOUDBERRY_USER}/.bashrc \
     && echo "export PXF_BASE=${CLOUDBERRY_DATA_DIRECTORY}/pxf" >> /home/${CLOUDBERRY_USER}/.bashrc \
     && mkdir -p ${CLOUDBERRY_DATA_DIRECTORY} \

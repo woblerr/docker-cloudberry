@@ -88,6 +88,70 @@ check_required_var() {
     fi
 }
 
+is_yproxy_enabled() {
+    [[ "${CLOUDBERRY_YEZZEY_ENABLE:-false}" == "true" ]]
+}
+
+setup_yproxy_config() {
+    local yproxy_config="${CLOUDBERRY_DATA_DIRECTORY}/yproxy.yaml"
+    if ! command -v yproxy >/dev/null 2>&1; then
+        error_and_exit "yproxy is not installed. Yezzey is available only in Cloudberry 2.2 images."
+    fi
+    if [ ! -f "${yproxy_config}" ]; then
+        error_and_exit "yproxy config not found at ${yproxy_config}. Mount yproxy.yaml at this path."
+    fi
+    export YPROXY_CONFIG="${yproxy_config}"
+    export YPROXY_SOCKET="/tmp/yproxy.sock"
+}
+
+start_yproxy() {
+    local yproxy_pid_file="${CLOUDBERRY_DATA_DIRECTORY}/yproxy.pid"
+    local wait_time=0
+
+    if [ -S "${YPROXY_SOCKET}" ]; then
+        echo "INFO - yproxy socket already exists at ${YPROXY_SOCKET}, checking if service is running"
+        if nc -U -z "${YPROXY_SOCKET}" 2>/dev/null; then
+            echo "INFO - yproxy is already running"
+            return 0
+        fi
+        echo "INFO - Removing stale socket ${YPROXY_SOCKET}"
+    fi
+    rm -f "${YPROXY_SOCKET}" "${yproxy_pid_file}"
+    echo "INFO - Starting yproxy with config ${YPROXY_CONFIG}"
+    yproxy --config "${YPROXY_CONFIG}" >> "${CLOUDBERRY_DATA_DIRECTORY}/yproxy.log" 2>&1 &
+    echo "$!" > "${yproxy_pid_file}"
+    while [ ! -S "${YPROXY_SOCKET}" ] && [ "${wait_time}" -lt 30 ]; do
+        if ! kill -0 "$(< "${yproxy_pid_file}")" 2>/dev/null; then
+            error_and_exit "yproxy stopped before creating ${YPROXY_SOCKET}; see ${CLOUDBERRY_DATA_DIRECTORY}/yproxy.log"
+        fi
+        sleep 1
+        wait_time=$((wait_time + 1))
+    done
+    if [ ! -S "${YPROXY_SOCKET}" ]; then
+        error_and_exit "yproxy did not create ${YPROXY_SOCKET} within 30 seconds"
+    fi
+    echo "INFO - yproxy started (PID $(< "${yproxy_pid_file}"))"
+}
+
+stop_yproxy() {
+    local yproxy_pid_file="${CLOUDBERRY_DATA_DIRECTORY}/yproxy.pid"
+    if [ -f "${yproxy_pid_file}" ]; then
+        local yproxy_pid
+        yproxy_pid=$(< "${yproxy_pid_file}")
+        if kill -0 "${yproxy_pid}" 2>/dev/null; then
+            echo "INFO - Stopping yproxy (PID ${yproxy_pid})"
+            kill "${yproxy_pid}"
+        fi
+        rm -f "${yproxy_pid_file}"
+    fi
+    rm -f "${YPROXY_SOCKET:-/tmp/yproxy.sock}"
+}
+
+set_shared_preload_libraries() {
+    local libraries=$1
+    USER=${CLOUDBERRY_USER} gpconfig -c shared_preload_libraries -v "${libraries}"
+}
+
 setup_gpinitsystem_config(){
     if [ -f /tmp/gpinitsystem_config ]; then
         echo "INFO - Copy gpinitsystem_config to ${gp_init_config_file}"
@@ -175,7 +239,11 @@ initialize_and_start_cbdb_segments() {
         IFS=':' read -r segment_num segment_type <<< "$arg"
         setup_segments "${segment_num}" "${segment_type}"
     done
-    trap "echo 'INFO - Shutdown segment host' && end_flag=1" TERM INT
+    if is_yproxy_enabled; then
+        setup_yproxy_config
+        start_yproxy
+    fi
+    trap "if is_yproxy_enabled; then stop_yproxy; fi; echo 'INFO - Shutdown segment host'; end_flag=1" TERM INT
     # Keep container running
     while [ "${end_flag}" == '' ]; do
         sleep 1
@@ -194,7 +262,11 @@ initialize_and_start_cbdb_standby() {
         error_and_exit "CLOUDBERRY_COORDINATOR_HOSTNAME is required when CLOUDBERRY_DEPLOYMENT=standby; cannot add coordinator's SSH host key to known_hosts."
     fi
     chmod 644 /home/${CLOUDBERRY_USER}/.ssh/known_hosts
-    trap "echo 'INFO - Shutdown standby coordinator host' && end_flag=1" TERM INT
+    if is_yproxy_enabled; then
+        setup_yproxy_config
+        start_yproxy
+    fi
+    trap "if is_yproxy_enabled; then stop_yproxy; fi; echo 'INFO - Shutdown standby coordinator host'; end_flag=1" TERM INT
     # Keep container running
     while [ "${end_flag}" == '' ]; do
         sleep 1
@@ -206,6 +278,10 @@ initialize_and_start_cbdb() {
     local pxf_env="${PXF_BASE}/conf/pxf-env.sh"
     local end_flag=""
     local gpdb_already_exists_flag=false
+
+    if is_yproxy_enabled; then
+        setup_yproxy_config
+    fi
 
     # Scan and add host keys
     for host in $(cat ${gp_init_host_file}); do
@@ -227,6 +303,7 @@ initialize_and_start_cbdb() {
         # Init Cloudberry
         echo "INFO - Initialize Cloudberry"
         gpinitsystem -e ${CLOUDBERRY_PASSWORD} -ac ${gp_init_config_file}
+        gp_shared_preload_libraries=$(psql template1 -t -c "SHOW shared_preload_libraries" | xargs)
         if [ "${CLOUDBERRY_DISKQUOTA_ENABLE}" == "true" ]; then
             echo "INFO - Enable diskquota"
             # Get available diskquota version
@@ -237,17 +314,13 @@ initialize_and_start_cbdb() {
             else
                 echo "INFO - createdb diskquota"
                 createdb "diskquota"
-                # Get current shared_preload_libraries value
-                echo "INFO - psql template1 -t -c \"SHOW shared_preload_libraries\" | xargs"
-                gp_shared_preload_libraries=$(psql template1 -t -c "SHOW shared_preload_libraries" | xargs)
                 # Add diskquota to shared_preload_libraries
                 if [ -z "${gp_shared_preload_libraries}" ]; then
-                    echo "INFO - gpconfig -c shared_preload_libraries -v \"diskquota-${gp_diskquota_version}\""
-                    USER=${CLOUDBERRY_USER} gpconfig -c shared_preload_libraries -v "diskquota-${gp_diskquota_version}"
+                    gp_shared_preload_libraries="diskquota-${gp_diskquota_version}"
                 else
-                    echo "INFO - gpconfig -c shared_preload_libraries -v \"'$gp_shared_preload_libraries,diskquota-${gp_diskquota_version}'\""
-                    USER=${CLOUDBERRY_USER} gpconfig -c shared_preload_libraries -v "'$gp_shared_preload_libraries,diskquota-${gp_diskquota_version}'"
+                    gp_shared_preload_libraries="${gp_shared_preload_libraries},diskquota-${gp_diskquota_version}"
                 fi
+                set_shared_preload_libraries "${gp_shared_preload_libraries}"
             fi
         fi
         if [ "${CLOUDBERRY_WALG_ENABLE}" == "true" ]; then
@@ -261,6 +334,20 @@ initialize_and_start_cbdb() {
             USER=${CLOUDBERRY_USER} gpconfig -c archive_command -v "'/bin/true'"
             echo "INFO - gpconfig -c wal_level -v replica"
             USER=${CLOUDBERRY_USER} gpconfig -c wal_level -v replica --skipvalidation
+        fi
+        if is_yproxy_enabled; then
+            echo "INFO - Enable Yezzey"
+            if ! psql template1 -t -c "SELECT 1 FROM pg_available_extensions WHERE name = 'yezzey'" 2>/dev/null | grep -q 1; then
+                error_and_exit "yezzey extension is not installed. Use a Cloudberry 2.2 image."
+            fi
+            USER=${CLOUDBERRY_USER} gpconfig -c yezzey.use_gpg_crypto -v false --skipvalidation
+            USER=${CLOUDBERRY_USER} gpconfig -c yezzey.use_otm_feature -v true --skipvalidation
+            if [ -z "${gp_shared_preload_libraries}" ]; then
+                gp_shared_preload_libraries="yezzey"
+            elif [[ ",${gp_shared_preload_libraries}," != *,yezzey,* ]]; then
+                gp_shared_preload_libraries="${gp_shared_preload_libraries},yezzey"
+            fi
+            set_shared_preload_libraries "${gp_shared_preload_libraries}"
         fi
         # Configure pg_hba
         echo "INFO - Configure pg_hba.conf"
@@ -288,6 +375,13 @@ initialize_and_start_cbdb() {
             echo "WARNING - diskquota extension is not available, skipping CREATE EXTENSION"
         fi
     fi
+    if is_yproxy_enabled && [ -n "${CLOUDBERRY_DATABASE_NAME:-}" ]; then
+        if ! psql template1 -t -c "SELECT 1 FROM pg_available_extensions WHERE name = 'yezzey'" 2>/dev/null | grep -q 1; then
+            error_and_exit "yezzey extension is not installed. Use a Cloudberry 2.2 image."
+        fi
+        echo "INFO - Create Yezzey extension in ${CLOUDBERRY_DATABASE_NAME}"
+        psql "${CLOUDBERRY_DATABASE_NAME}" -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS yezzey;"
+    fi
     # Enable PXF
     if [ ${CLOUDBERRY_PXF_ENABLE} == "true" ]; then
         if [ ! -f "${pxf_env}" ]; then
@@ -306,12 +400,17 @@ initialize_and_start_cbdb() {
         pxf cluster start
         sleep 10
     fi
+    if is_yproxy_enabled; then
+        setup_yproxy_config
+        start_yproxy
+    fi
     # Monitor logs
     trap "kill %1; \
         if [ ${CLOUDBERRY_PXF_ENABLE} == 'true' ] && [ -f '${pxf_env}' ]; then \
             echo 'INFO - Stop PXF cluster'; \
             pxf cluster stop; \
         fi; \
+        if is_yproxy_enabled; then stop_yproxy; fi; \
         gpstop -a -M fast && end_flag=1" INT TERM
     tail -f $(ls ${CLOUDBERRY_DATA_DIRECTORY}/${gp_master_dir_name}/${CLOUDBERRY_SEG_PREFIX}-1/${gp_log_dir}/gpdb-* | tail -n1) &
     # Execute custom init scripts.
@@ -349,6 +448,7 @@ case ${CLOUDBERRY_DEPLOYMENT} in
         initialize_and_start_cbdb
         ;;
     "segment")
+        setup_version_config
         setup_segment_authorized_keys
         initialize_and_start_cbdb_segments "$@"
         ;;

@@ -14,10 +14,10 @@ if [ "${uid}" = "0" ]; then
     fi
     # Custom user.
     if [ "${CLOUDBERRY_USER}" != "gpadmin" ] || [ "${CLOUDBERRY_UID}" != "1001" ]; then
-        java_home_path=$(dirname $(dirname $(readlink -f $(which java))))
+        java_home_path=$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")
         usermod -g ${CLOUDBERRY_GID} -l ${CLOUDBERRY_USER} -u ${CLOUDBERRY_UID} -m -d /home/${CLOUDBERRY_USER} gpadmin
         echo "source /usr/local/cloudberry-db/cloudberry-env.sh" > /home/${CLOUDBERRY_USER}/.bashrc
-        echo "export JAVA_HOME=/${java_home_path}" >> /home/${CLOUDBERRY_USER}/.bashrc
+        echo "export JAVA_HOME=${java_home_path}" >> /home/${CLOUDBERRY_USER}/.bashrc
         echo 'export PATH="/usr/local/pxf/bin:${PATH}"' >> /home/${CLOUDBERRY_USER}/.bashrc
         echo "export PXF_BASE=${CLOUDBERRY_DATA_DIRECTORY}/pxf" >> /home/${CLOUDBERRY_USER}/.bashrc
         mkdir -m 700 -p /home/${CLOUDBERRY_USER}/.ssh
