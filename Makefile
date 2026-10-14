@@ -49,5 +49,5 @@ define build_cbdb_image
 		-f docker/cloudberry/$(2)/$(3)/Dockerfile \
 		--build-arg CBDB_VERSION=$(1) \
 		--build-arg BUILD_JOBS=$(BUILD_JOBS) \
-		-t cloudberry:$(1)-$(2) .
+		-t cloudberry:$(1)-$(2) $(if $(filter ubuntu22.04,$(2)),-t cloudberry:$(1)) .
 endef
