@@ -48,7 +48,7 @@ The repository contains information for the last available versions. For specifi
 | CBDB version | Ubuntu 22.04 | Ubuntu 24.04 | Rocky Linux 9 | Platform |
 |---|---|---|---|---|
 | 2.1.0-incubating | `2.1.0-incubating`, `2.1.0-incubating-ubuntu22.04` | — | `2.1.0-incubating-rockylinux9` | `linux/amd64`, `linux/arm64` |
-| 2.2.0-incubating-rc1 | `2.2.0-incubating-rc1`, `2.2.0-incubating-rc1-ubuntu22.04` | `2.2.0-incubating-rc1-ubuntu24.04` | `2.2.0-incubating-rc1-rockylinux9` | `linux/amd64`, `linux/arm64` |
+| 2.2.0-incubating | `2.2.0-incubating`, `2.2.0-incubating-ubuntu22.04` | `2.2.0-incubating-ubuntu24.04` | `2.2.0-incubating-rockylinux9` | `linux/amd64`, `linux/arm64` |
 
 ## Pull
 
@@ -73,7 +73,7 @@ You will need to mount the necessary directories or files inside the container (
 ### Simple
 
 ```bash
-docker run -p 5432:5432 -e CLOUDBERRY_PASSWORD=gparray -d cloudberry:2.2.0-incubating-rc1
+docker run -p 5432:5432 -e CLOUDBERRY_PASSWORD=gparray -d cloudberry:2.2.0-incubating
 ```
 
 Connect to Cloudberry:
@@ -88,7 +88,7 @@ As an alternative to passing sensitive information via environment variables, `_
 
 For example:
 ```bash
-docker run -p 5432:5432 -e CLOUDBERRY_PASSWORD_FILE=/run/secrets/gpdb_password -d cloudberry:2.2.0-incubating-rc1
+docker run -p 5432:5432 -e CLOUDBERRY_PASSWORD_FILE=/run/secrets/gpdb_password -d cloudberry:2.2.0-incubating
 ```
 
 ### Initialization Scripts
@@ -271,7 +271,7 @@ make build_cbdb_22_rockylinux9
 The release-line tags and parallelism can be overridden without editing Dockerfiles:
 
 ```bash
-make build_cbdb_22_ubuntu24 TAG_CBDB_22=2.2.0-incubating-rc1 BUILD_JOBS=4
+make build_cbdb_22_ubuntu24 TAG_CBDB_22=2.2.0-incubating BUILD_JOBS=4
 ```
 
 Each Dockerfile also accepts component build arguments: `CBDB_VERSION`, `PXF_VERSION`, `CBDB_BACKUP_VERSION`, `WALG_VERSION`, `GOLANG_VERSION`, `YPROXY_VERSION` (2.2 only), the base OS version, `BUILD_JOBS`, and `REPO_BUILD_TAG`. Java remains fixed at version 11. The 2.1 backup pin remains unchanged.
@@ -282,7 +282,7 @@ Each Dockerfile also accepts component build arguments: `CBDB_VERSION`, `PXF_VER
 docker buildx build --platform linux/amd64,linux/arm64 \
   -f docker/cloudberry/ubuntu22.04/2.2/Dockerfile \
   --build-arg BUILD_JOBS=4 \
-  -t cloudberry:2.2.0-incubating-rc1 .
+  -t cloudberry:2.2.0-incubating .
 ```
 
 ## Running tests

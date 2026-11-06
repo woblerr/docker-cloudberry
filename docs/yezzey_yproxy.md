@@ -14,7 +14,7 @@ This document describes how to use Yezzey and Yproxy in the Cloudberry 2.2 image
 
 ## Requirements
 
-- Cloudberry 2.2 image (e.g., `cloudberry:2.2.0-incubating-rc1`).
+- Cloudberry 2.2 image (e.g., `cloudberry:2.2.0-incubating`).
 - S3-compatible storage.
 - `yproxy.yaml` configuration file.
 
@@ -62,7 +62,7 @@ docker run -p 5432:5432 \
   -e CLOUDBERRY_PASSWORD=gparray \
   -e CLOUDBERRY_YEZZEY_ENABLE=true \
   -v $(pwd)/yproxy.yaml:/data/yproxy.yaml \
-  -d cloudberry:2.2.0-incubating-rc1
+  -d cloudberry:2.2.0-incubating
 ```
 
 ### Multi-node Cluster
@@ -77,7 +77,7 @@ Example for master:
 ```yaml
 services:
   master:
-    image: cloudberry:2.2.0-incubating-rc1
+    image: cloudberry:2.2.0-incubating
     environment:
       - CLOUDBERRY_DEPLOYMENT=master
       - CLOUDBERRY_YEZZEY_ENABLE=true
@@ -91,7 +91,7 @@ Example for segment:
 ```yaml
 services:
   segment1:
-    image: cloudberry:2.2.0-incubating-rc1
+    image: cloudberry:2.2.0-incubating
     command: /start_cbdb.sh "00:primary" "01:primary"
     environment:
       - CLOUDBERRY_DEPLOYMENT=segment

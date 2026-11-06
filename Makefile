@@ -1,5 +1,5 @@
 CBDB_VERSION_21 := 2.1.0-incubating
-CBDB_VERSION_22 := 2.2.0-incubating-rc1
+CBDB_VERSION_22 := 2.2.0-incubating
 TAG_CBDB_21 ?= $(CBDB_VERSION_21)
 TAG_CBDB_22 ?= $(CBDB_VERSION_22)
 BUILD_JOBS ?= 2
