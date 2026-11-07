@@ -39,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cbdb_version: [2.2.0-incubating-rc1]
+        cbdb_version: [2.2.0-incubating]
         os_version: [ubuntu22.04, ubuntu24.04, rockylinux9]
         platform: [linux/amd64, linux/arm64]
     steps:
@@ -118,7 +118,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cbdb_version: [2.2.0-incubating-rc1]
+        cbdb_version: [2.2.0-incubating]
         os_version: [ubuntu22.04, ubuntu24.04, rockylinux9]
     steps:
       - name: Get repo tag
